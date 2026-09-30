@@ -1,0 +1,81 @@
+name: CI ubuntu
+
+# Ubuntu lane: shared KMP tests (JVM + Android unit), server tests, Android
+# assemble — all inside a Docker-provided toolchain (no host installs), per
+# M1 acceptance criteria.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gradle:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cirruslabs/android-sdk:36
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trust checkout ownership (container uid differs)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: toolchain.json contract
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          t = json.load(open("toolchain.json"))
+          need = {
+              "ios": ["xcode_version","xcode_build","iphoneos_sdk","bundle_identifier","targeted_device_family"],
+              "android": ["application_id","min_sdk","target_sdk_floor","compile_sdk_floor"],
+              "kmp": ["kotlin_floor","ios_targets","ui_frameworks_prohibited"],
+              "server": ["framework","jvm_floor"],
+          }
+          for section, fields in need.items():
+              for f in fields:
+                  assert f in t[section], f"toolchain.json missing {section}.{f}"
+          assert t["ios"]["bundle_identifier"] == "com.infinityball.pitchpact"
+          assert t["ios"]["xcode_version"] == "26.0.1" and t["ios"]["xcode_build"] == "17A400"
+          assert t["kmp"]["kotlin_floor"] == "2.1"
+          print("toolchain.json contract OK")
+          PY
+
+      - name: gitignore signing-material assertions
+        run: |
+          for f in secret.p8 key.p12 release.keystore dist.mobileprovision local.properties; do
+            git check-ignore -q "$f" || { echo "NOT IGNORED: $f"; exit 1; }
+          done
+          echo "gitignore gate OK"
+
+      - name: Data-minimization / forbidden-framework gate
+        run: |
+          if grep -rniE "\bflutter\b|react[ -]?native|\bexpo\b|\bunity\b|\bmaui\b|org\.jetbrains\.compose" \
+            --include='*.kts' --include='*.toml' --include='*.kt' --include='*.swift' \
+            --include='*.pbxproj' --include='*.xml' .; then
+            echo "forbidden cross-platform UI reference found"; exit 1
+          fi
+          if grep -rnE "https?://" settings.gradle.kts shared/build.gradle.kts androidApp/build.gradle.kts server/build.gradle.kts; then
+            echo "hard-coded host in build scripts"; exit 1
+          fi
+          echo "data-minimization gate OK"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: /root/.gradle
+          key: gradle-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.arch }}-
+
+      - name: Build + test (shared, server, android)
+        run: ./gradlew --no-daemon :shared:test :androidApp:assembleDebug :server:test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-test-results
+          path: '**/build/test-results/**'
+          if-no-files-found: warn

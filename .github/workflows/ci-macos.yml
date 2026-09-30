@@ -1,0 +1,120 @@
+name: CI macOS (iOS)
+
+# macOS lane: exact Xcode 26.0.1 / 17A400 / iOS SDK 26.0 measurement (missing
+# exact pin = environment blocker, never a silent substitute), pre-build policy
+# greps, xcodebuild simulator build (drives the KMP embedAndSign loop), and
+# post-build Info.plist assertions.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ios:
+    runs-on: macos-26
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXPECTED_XCODE: "26.0.1"
+      EXPECTED_XCODE_BUILD: "17A400"
+      EXPECTED_SDK: "26.0"
+      BUNDLE_ID: com.infinityball.pitchpact
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve JDK for Gradle (wrapper-pinned; no host installs)
+        run: |
+          if [ -n "${JAVA_HOME_21_ARM64:-}" ]; then
+            echo "JAVA_HOME=$JAVA_HOME_21_ARM64" >> "$GITHUB_ENV"
+          elif command -v /usr/libexec/java_home >/dev/null; then
+            echo "JAVA_HOME=$(/usr/libexec/java_home -v21 2>/dev/null || /usr/libexec/java_home -v17 2>/dev/null)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Measure exact Xcode pin (blocker if mismatch)
+        run: |
+          set -euo pipefail
+          # Deterministic exact-match selection: enumerate hosted Xcode.app
+          # candidates and pick the one MEASURING the pinned version/build.
+          # No silent substitution — if nothing matches exactly, this is an
+          # environment blocker and we stop.
+          pick=""
+          for app in /Applications/Xcode*.app/Contents/Developer; do
+            ver=$(DEVELOPER_DIR="$app" xcodebuild -version | head -1 | awk '{print $2}')
+            build=$(DEVELOPER_DIR="$app" xcodebuild -version | grep -i 'build version' | awk '{print $3}')
+            echo "candidate $app -> $ver ($build)"
+            if [ "$ver" = "$EXPECTED_XCODE" ] && [ "$build" = "$EXPECTED_XCODE_BUILD" ]; then
+              pick="$app"
+            fi
+          done
+          if [ -z "$pick" ]; then
+            echo "::error::Xcode pin mismatch: need $EXPECTED_XCODE ($EXPECTED_XCODE_BUILD); none of the hosted candidates measured exact. Environment blocker — do not substitute another toolchain."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
+          echo "using $pick"
+          xcodebuild -version
+          SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "measured iphoneos SDK=$SDK_VER"
+          [ "$SDK_VER" = "$EXPECTED_SDK" ] || { echo "::error::iOS SDK $SDK_VER != $EXPECTED_SDK (environment blocker)"; exit 1; }
+
+      - name: Pre-build policy greps
+        run: |
+          set -euo pipefail
+          PBX=iosApp/PitchPact.xcodeproj/project.pbxproj
+          # TARGETED_DEVICE_FAMILY = 1 in EVERY configuration (project + target x Debug/Release = 4)
+          COUNTS=$(grep -c 'TARGETED_DEVICE_FAMILY = 1;' "$PBX" || true)
+          BAD=$(grep -c 'TARGETED_DEVICE_FAMILY' "$PBX" || true)
+          [ "$COUNTS" = "4" ] && [ "$BAD" = "4" ] || { echo "device-family pin wrong: $COUNTS/$BAD"; exit 1; }
+          # bundle prefix everywhere it appears
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact;' "$PBX"
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball' "$PBX" || true)" = "2" ]
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' "$PBX" || true)" = "2" ]
+          # no forbidden cross-platform UI frameworks anywhere in iOS sources/project
+          if grep -rniE '\bflutter\b|react[ -]?native|\bexpo\b|\bunity\b|\bmaui\b|org\.jetbrains\.compose|import SwiftUICompose' iosApp/; then
+            echo "forbidden cross-platform UI reference found"; exit 1
+          fi
+          # SDKROOT is iphoneos everywhere
+          [ "$(grep -c 'SDKROOT = iphoneos' "$PBX" || true)" = "2" ]
+          echo "pre-build policy greps OK"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-macos-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-macos-
+
+      - name: xcodebuild simulator build (runs embedAndSignAppleFrameworkForXcode)
+        run: |
+          set -euo pipefail
+          cd iosApp
+          xcodebuild \
+            -project PitchPact.xcodeproj \
+            -scheme PitchPact \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Post-build Info.plist assertions
+        run: |
+          set -euo pipefail
+          PLIST=iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/PitchPact.app/Info.plist
+          test -f "$PLIST" || { echo "missing built Info.plist"; exit 1; }
+          FAM=$(plutil -extract UIDeviceFamily xml1 -o - "$PLIST" | grep -o '<integer>[0-9]*</integer>' | tr -cd '0-9')
+          [ "$FAM" = "1" ] || { echo "UIDeviceFamily=$FAM (must be [1])"; exit 1; }
+          BID=$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")
+          [ "$BID" = "$BUNDLE_ID" ] || { echo "CFBundleIdentifier=$BID"; exit 1; }
+          echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: iosApp/build/DerivedData/Build/Products/**
+          if-no-files-found: warn
