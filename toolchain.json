@@ -1,0 +1,38 @@
+{
+  "status": "enforced-by-native-ci",
+  "schema": "tool-lab/toolchain/v1",
+  "platform": "ios+android+kmp",
+  "platform_exception": "USER-DIRECTED 2026-09-30: shared logic in Kotlin Multiplatform, native UX (SwiftUI iOS / Jetpack Compose Android). Fleet default native-Swift-iPhone-only-with-no-shared-frameworks is explicitly waived for THIS project only. iOS side keeps device_family iphone-only, com.infinityball. bundle prefix, iOS 26 pin.",
+  "ios": {
+    "xcode_version": "26.0.1",
+    "xcode_build": "17A400",
+    "iphoneos_sdk": "26.0",
+    "minimum_sdk_major": 26,
+    "deployment_target": "26.0",
+    "swift_language_mode": "6",
+    "bundle_identifier": "com.infinityball.pitchpact",
+    "targeted_device_family": "1",
+    "native_ipad_support": false
+  },
+  "android": {
+    "application_id": "com.infinityball.pitchpact",
+    "min_sdk": 27,
+    "target_sdk_floor": 36,
+    "compile_sdk_floor": 36,
+    "kotlin_jvm_target": "17"
+  },
+  "kmp": {
+    "kotlin_floor": "2.1",
+    "ios_targets": ["iosArm64", "iosSimulatorArm64"],
+    "ui_frameworks_allowed": ["SwiftUI (iOS)", "Jetpack Compose (Android)"],
+    "ui_frameworks_prohibited": ["Flutter", "React Native", "Expo", ".NET MAUI", "Unity", "Compose Multiplatform"]
+  },
+  "server": {
+    "framework": "ktor",
+    "jvm_floor": 17,
+    "default_host": "pitchpact.infinityball.com",
+    "status": "PLANNED - not deployed"
+  },
+  "device_family": "iphone-only",
+  "notes": "iOS CI must assert TARGETED_DEVICE_FAMILY=1, the exact com.infinityball.pitchpact bundle id, Xcode 26.0.1/17A400 measurement, and the iOS 26+ SDK contract. Android CI builds via Gradle on ubuntu. Network endpoints are config-driven; CI enforces the data-minimization allowlist (no hard-coded hosts, no analytics/ads, no private guardian/availability fields in broadcast/registry DTOs) in place of the fleet zero-network gate."
+}

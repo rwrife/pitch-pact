@@ -1,0 +1,36 @@
+# macOS / Xcode
+.DS_Store
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# Gradle / Kotlin / Android
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+
+# KMP framework artifacts
+shared/build/
+iosApp/PitchPact.xcodeproj/project.xcworkspace/xcshareddata/
+.cxx/
+captures/
+
+# Signing material — never committed
+*.p8
+*.p12
+*.keystore
+*.jks
+*.mobileprovision
+*.provisionprofile
+
+# Node/tooling caches
+node_modules/
+__pycache__/
+*.pyc
+
+# Env & secrets
+.env
+!.env.example
