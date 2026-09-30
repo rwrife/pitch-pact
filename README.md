@@ -88,9 +88,7 @@ This is a youth-sports product; the privacy posture is strict by design.
 
 ## Current status and milestones
 
-Documentation/backlog only. No application code, CI, hosted service, TestFlight, or Play distribution exists yet — nothing is claimed until CI or device evidence exists.
-
-1. M1: KMP `shared` domain core + project skeletons + CI gates
+1. M1: KMP `shared` domain core + project skeletons + CI gates — **in review** (shared ledger + consensus state machine + v0 DTO envelope, iOS/Android/server targets, dual CI lanes)
 2. M2: Team/roster/uniform UX on iOS and Android
 3. M3: Tournaments, scheduling, reminders, availability
 4. M4: Match-day scoring engine + play-by-play UX (offline-first)
@@ -98,6 +96,8 @@ Documentation/backlog only. No application code, CI, hosted service, TestFlight,
 6. M6: Global team registry, team codes, cross-team fixture coordination
 7. M7: Two-scorer consensus scoring with audit ledger
 8. M8: Backup/export/deletion + app-store/icon assets + TestFlight + Play internal tracks
+
+Feature claims (broadcast, registry, consensus product UX, distribution) are intent, not shipped: no application code is claimed live until CI and device evidence exists for each milestone.
 
 ## Development / build quickstart (planned)
 
