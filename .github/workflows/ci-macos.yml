@@ -54,10 +54,11 @@ jobs:
           fi
           echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
           echo "using $pick"
-          xcodebuild -version
-          SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
-          echo "measured iphoneos SDK=$SDK_VER"
-          [ "$SDK_VER" = "$EXPECTED_SDK" ] || { echo "::error::iOS SDK $SDK_VER != $EXPECTED_SDK (environment blocker)"; exit 1; }
+          # Measure the SDK of the SELECTED candidate specifically — `xcrun`
+          # otherwise reports whichever Xcode xcode-select points at globally.
+          SDK_VER=$(DEVELOPER_DIR="$pick" xcrun --sdk iphoneos --show-sdk-version)
+          echo "measured iphoneos SDK=$SDK_VER for $pick"
+          [ "$SDK_VER" = "$EXPECTED_SDK" ] || { echo "::error::iPhoneOS SDK for pinned Xcode is $SDK_VER != $EXPECTED_SDK (environment blocker)"; exit 1; }
 
       - name: Pre-build policy greps
         run: |
