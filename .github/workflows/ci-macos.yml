@@ -91,12 +91,17 @@ jobs:
         run: |
           set -euo pipefail
           cd iosApp
+          # arm64-only: KMP exports iosSimulatorArm64 (no iosX64 target — none
+          # of the fleet builds Intel slices). Generic destination + ARCHS
+          # override keeps the lane hermetic: no simulator device/runtime
+          # dependency, SDK = the 26.0 bundled with the pinned Xcode.
           xcodebuild \
             -project PitchPact.xcodeproj \
             -scheme PitchPact \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             build
