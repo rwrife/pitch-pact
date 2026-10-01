@@ -1,8 +1,10 @@
 name: CI ubuntu
 
-# Ubuntu lane: shared KMP tests (JVM + Android unit), server tests, Android
-# assemble — all inside a Docker-provided toolchain (no host installs), per
-# M1 acceptance criteria.
+# Ubuntu lane: shared KMP tests (JVM + Android unit incl. Robolectric),
+# server tests, Android assemble — all inside a Docker-provided toolchain
+# (no host installs), plus a Swift job compiling + testing the GRDB store
+# package with real SQLite (Linux evidence for the iOS store logic; NOT iOS
+# build evidence — the macOS lane owns that).
 
 on:
   pull_request:
@@ -46,13 +48,17 @@ jobs:
       - name: gitignore signing-material assertions
         run: |
           for f in secret.p8 key.p12 release.keystore dist.mobileprovision local.properties; do
-            git check-ignore -q "$f" || { echo "NOT IGNORED: $f"; exit 1; }
+            git check-ignore -q "$f" || { echo "NOT IGNORED: $f" && exit 1; }
           done
           echo "gitignore gate OK"
 
       - name: Data-minimization / forbidden-framework gate
         run: |
+          # --exclude-dir=.build: the gate governs FIRST-PARTY usage only;
+          # SwiftPM checkouts under Packages/*/.build vendor GRDB sources whose
+          # socket/bind identifiers would false-positive.
           if grep -rniE "\bflutter\b|react[ -]?native|\bexpo\b|\bunity\b|\bmaui\b|org\.jetbrains\.compose" \
+            --exclude-dir=.build \
             --include='*.kts' --include='*.toml' --include='*.kt' --include='*.swift' \
             --include='*.pbxproj' --include='*.xml' .; then
             echo "forbidden cross-platform UI reference found"; exit 1
@@ -69,8 +75,8 @@ jobs:
           key: gradle-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.arch }}-
 
-      - name: Build + test (shared, server, android)
-        run: ./gradlew --no-daemon :shared:test :androidApp:assembleDebug :server:test
+      - name: Build + test (shared, server, android incl. Room/Robolectric)
+        run: ./gradlew --no-daemon :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug :server:test
 
       - name: Upload test results
         if: always()
@@ -79,3 +85,35 @@ jobs:
           name: ubuntu-test-results
           path: '**/build/test-results/**'
           if-no-files-found: warn
+
+  swift-store:
+    # Real-SQLite evidence for the iOS store package on Linux. The macOS
+    # lane is the ONLY iOS build/device evidence; this job proves logic.
+    runs-on: ubuntu-latest
+    container:
+      image: swift:6.2-noble
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trust checkout ownership (container uid differs)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: SQLite headers for GRDB's systemLibrary shim
+        run: apt-get update -qq && apt-get install -y -qq libsqlite3-dev
+
+      - name: SwiftPM cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/swiftpm-cache
+          key: swiftpm-${{ hashFiles('Packages/PitchPactStore/Package.resolved') }}
+          restore-keys: swiftpm-
+
+      - name: Test GRDB store package
+        working-directory: Packages/PitchPactStore
+        run: |
+          set -euo pipefail
+          export SWIFTPM_MODULECACHE_OVERRIDE=/tmp/swiftpm-cache
+          swift test --scratch-path /tmp/store-build 2>&1 | tail -25

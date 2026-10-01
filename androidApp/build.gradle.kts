@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -36,6 +37,28 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric: real Room/SQLite on JVM (Android instrumentation
+            // runners are not available on this fleet's CI).
+            isIncludeAndroidResources = true
+        }
+    }
+
+    sourceSets {
+        getByName("test") {
+            // Shared cross-platform M2 fixture — same file the iOS store test
+            // loads from the repo checkout.
+            resources.srcDir("$rootDir/fixtures")
+        }
+    }
+}
+
+// Room writes schema JSON per version here on every build (v1 committed from
+// the first CI build; from M3 it becomes the migration validation baseline).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -54,4 +77,14 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.junit.ext)
 }

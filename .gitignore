@@ -12,6 +12,10 @@ local.properties
 *.iml
 .kotlin/
 
+# SwiftPM build artifacts (gate scripts scan first-party sources only)
+.build/
+Packages/*/.build/
+
 # KMP framework artifacts
 shared/build/
 iosApp/PitchPact.xcodeproj/project.xcworkspace/xcshareddata/
