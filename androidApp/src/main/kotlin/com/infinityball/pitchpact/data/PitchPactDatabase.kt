@@ -8,7 +8,10 @@ import com.infinityball.pitchpact.store.TeamStore
 
 @Database(
     entities = [TeamRow::class, PlayerRow::class, UniformRow::class, GuardianRow::class],
-    version = RoomTeamStore.SCHEMA_VERSION,
+    // KSP evaluates annotation arguments at compile time and cannot resolve
+    // cross-file companion constants; 1 is the v1 schema (matches the shared
+    // TeamStore contract and GRDB's first migration on the iOS side).
+    version = 1,
     exportSchema = true,
 )
 abstract class PitchPactDatabase : RoomDatabase() {

@@ -416,7 +416,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		PBPP0000000000000000000001 /* XCLocalSwiftPackageReference "Packages/PitchPactStore" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../Packages/PitchPactStore;
+			relativePath = ../Packages/PitchPactStore;
 		};
 /* End XCLocalSwiftPackageReference section */
 
