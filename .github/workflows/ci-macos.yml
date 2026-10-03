@@ -41,8 +41,13 @@ jobs:
           # environment blocker and we stop.
           pick=""
           for app in /Applications/Xcode*.app/Contents/Developer; do
-            ver=$(DEVELOPER_DIR="$app" xcodebuild -version | head -1 | awk '{print $2}')
-            build=$(DEVELOPER_DIR="$app" xcodebuild -version | grep -i 'build version' | awk '{print $3}')
+            # Capture the FULL output via command substitution — piping
+            # xcodebuild into `head` races: head exits after line 1, xcodebuild
+            # then writes line 2 to a closed pipe and aborts (NSFileHandle
+            # broken pipe, exit 134). Verified flake on run 37160673173.
+            out=$(DEVELOPER_DIR="$app" xcodebuild -version)
+            ver=$(printf '%s\n' "$out" | awk 'NR==1{print $2}')
+            build=$(printf '%s\n' "$out" | grep -i 'build version' | awk '{print $3}')
             echo "candidate $app -> $ver ($build)"
             if [ "$ver" = "$EXPECTED_XCODE" ] && [ "$build" = "$EXPECTED_XCODE_BUILD" ]; then
               pick="$app"
