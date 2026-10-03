@@ -42,7 +42,7 @@ struct TeamDetailView: View {
                     .accessibilityIdentifier("app.team.addUniform")
             }
         }
-        .navigationTitle(AppTeamStore.shared.team(id: teamId)?.name ?? "Team")
+        .navigationTitle(teamName)
         .onAppear(perform: reloadSafely)
         .sheet(isPresented: $showAddPlayer) {
             PlayerForm(teamId: teamId) { reloadSafely() }
@@ -138,6 +138,10 @@ struct TeamDetailView: View {
         return text
     }
 
+    private var teamName: String {
+        (try? AppTeamStore.shared.team(id: teamId))?.name ?? "Team"
+    }
+
     private func reloadSafely() {
         players = (try? AppTeamStore.shared.players(teamId: teamId)) ?? []
         uniforms = (try? AppTeamStore.shared.uniformRequirements(teamId: teamId)) ?? []
@@ -195,8 +199,8 @@ struct PlayerForm: View {
             dismiss()
         } catch let failure as ValidationFailure {
             error = failure.message
-        } catch {
-            error = error.localizedDescription
+        } catch let failure {
+            error = failure.localizedDescription
         }
     }
 }
@@ -262,15 +266,15 @@ struct UniformForm: View {
                 opponentName: opponent,
                 homeKit: Kit(primary: home),
                 awayKit: Kit(primary: away),
-                keeperKit: keeper.map(Kit.init(primary:)),
+                keeperKit: keeper.map { Kit(primary: $0) },
                 equipmentChecklist: ["shinguards"]
             ))
             onSave()
             dismiss()
         } catch let failure as ValidationFailure {
             error = failure.message
-        } catch {
-            error = error.localizedDescription
+        } catch let failure {
+            error = failure.localizedDescription
         }
     }
 }
@@ -310,7 +314,7 @@ struct GuardianForm: View {
                     TextField("Guardian name", text: $name)
                         .accessibilityIdentifier("app.guardian.nameField")
                     TextField("Phone", text: $phone)
-                        .keyboardType(.telephonePad)
+                        .keyboardType(.phonePad)
                         .accessibilityIdentifier("app.guardian.phoneField")
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
@@ -359,8 +363,8 @@ struct GuardianForm: View {
             onSave()
         } catch let failure as ValidationFailure {
             error = failure.message
-        } catch {
-            error = error.localizedDescription
+        } catch let failure {
+            error = failure.localizedDescription
         }
     }
 }
