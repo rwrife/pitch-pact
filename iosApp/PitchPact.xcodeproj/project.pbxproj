@@ -8,11 +8,32 @@
 
 /* Begin PBXBuildFile section */
 		AA00000000000000000000B1 /* PitchPactApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* PitchPactApp.swift */; };
+		AA00000000000000000000B6 /* TeamsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* TeamsView.swift */; };
+		AA00000000000000000000B7 /* TeamDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* TeamDetailView.swift */; };
+		AA00000000000000000000B8 /* TeamStoreFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* TeamStoreFactory.swift */; };
+		AA00000000000000000000B10 /* PitchPactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A11 /* PitchPactTests.swift */; };
+		PBPP0000000000000000000003 /* PitchPactStore in Frameworks */ = {isa = PBXBuildFile; productRef = PBPP0000000000000000000002 /* PitchPactStore */; };
+		PBPP0000000000000000000005 /* PitchPactStore in Frameworks */ = {isa = PBXBuildFile; productRef = PBPP0000000000000000000004 /* PitchPactStore */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AA00000000000000000000G2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA00000000000000000000E1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA00000000000000000000D1;
+			remoteInfo = PitchPact;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		AA00000000000000000000A1 /* PitchPact.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PitchPact.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000A2 /* PitchPactApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactApp.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A7 /* TeamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsView.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A8 /* TeamDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDetailView.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A9 /* TeamStoreFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamStoreFactory.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A10 /* PitchPactTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PitchPactTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000A11 /* PitchPactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -20,6 +41,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				PBPP0000000000000000000003 /* PitchPactStore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA00000000000000000000E6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				PBPP0000000000000000000005 /* PitchPactStore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -30,6 +60,7 @@
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000000C3 /* PitchPact */,
+				AA00000000000000000000C5 /* PitchPactTests */,
 				AA00000000000000000000C4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -38,14 +69,26 @@
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000000A2 /* PitchPactApp.swift */,
+				AA00000000000000000000A7 /* TeamsView.swift */,
+				AA00000000000000000000A8 /* TeamDetailView.swift */,
+				AA00000000000000000000A9 /* TeamStoreFactory.swift */,
 			);
 			path = PitchPact;
+			sourceTree = "<group>";
+		};
+		AA00000000000000000000C5 /* PitchPactTests */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000A11 /* PitchPactTests.swift */,
+			);
+			path = PitchPactTests;
 			sourceTree = "<group>";
 		};
 		AA00000000000000000000C4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000000A1 /* PitchPact.app */,
+				AA00000000000000000000A10 /* PitchPactTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,9 +110,33 @@
 			dependencies = (
 			);
 			name = PitchPact;
+			packageProductDependencies = (
+				PBPP0000000000000000000002 /* PitchPactStore */,
+			);
 			productName = PitchPact;
 			productReference = AA00000000000000000000A1 /* PitchPact.app */;
 			productType = "com.apple.product-type.application";
+		};
+		AA00000000000000000000D2 /* PitchPactTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000000000000000000F7 /* Build configuration list for PBXNativeTarget "PitchPactTests" */;
+			buildPhases = (
+				AA00000000000000000000E5 /* Sources */,
+				AA00000000000000000000E6 /* Frameworks */,
+				AA00000000000000000000E7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA00000000000000000000G1 /* PBXTargetDependency */,
+			);
+			name = PitchPactTests;
+			packageProductDependencies = (
+				PBPP0000000000000000000004 /* PitchPactStore */,
+			);
+			productName = PitchPactTests;
+			productReference = AA00000000000000000000A10 /* PitchPactTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -84,6 +151,10 @@
 					AA00000000000000000000D1 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
+					AA00000000000000000000D2 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = AA00000000000000000000D1;
+					};
 				};
 			};
 			buildConfigurationList = AA00000000000000000000F1 /* Build configuration list for PBXProject "PitchPact" */;
@@ -95,17 +166,28 @@
 				Base,
 			);
 			mainGroup = AA00000000000000000000C1;
+			packageReferences = (
+				PBPP0000000000000000000001 /* XCLocalSwiftPackageReference "Packages/PitchPactStore" */,
+			);
 			productRefGroup = AA00000000000000000000C4 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				AA00000000000000000000D1 /* PitchPact */,
+				AA00000000000000000000D2 /* PitchPactTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AA00000000000000000000B4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA00000000000000000000E7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -141,11 +223,30 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA00000000000000000000B8 /* TeamStoreFactory.swift in Sources */,
+				AA00000000000000000000B6 /* TeamsView.swift in Sources */,
 				AA00000000000000000000B1 /* PitchPactApp.swift in Sources */,
+				AA00000000000000000000B7 /* TeamDetailView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA00000000000000000000E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA00000000000000000000B10 /* PitchPactTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA00000000000000000000G1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA00000000000000000000D1 /* PitchPact */;
+			targetProxy = AA00000000000000000000G2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA00000000000000000000F3 /* Debug */ = {
@@ -239,11 +340,44 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				CURRENT_PROJECT_VERSION = 1;
+				OTHER_LDFLAGS = ("-framework", "PitchPactShared");
 				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		AA00000000000000000000F8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PitchPact.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PitchPact";
+			};
+			name = Debug;
+		};
+		AA00000000000000000000F9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PitchPact.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PitchPact";
 			};
 			name = Release;
 		};
@@ -268,7 +402,34 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		AA00000000000000000000F7 /* Build configuration list for PBXNativeTarget "PitchPactTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA00000000000000000000F8 /* Debug */,
+				AA00000000000000000000F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		PBPP0000000000000000000001 /* XCLocalSwiftPackageReference "Packages/PitchPactStore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/PitchPactStore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		PBPP0000000000000000000002 /* PitchPactStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PitchPactStore;
+		};
+		PBPP0000000000000000000004 /* PitchPactStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PitchPactStore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AA00000000000000000000E1 /* Project object */;
 }

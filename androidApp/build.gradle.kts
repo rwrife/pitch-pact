@@ -2,11 +2,17 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.infinityball.pitchpact"
     compileSdk = 36
+    // Pin to the build-tools the CI image ships (ANDROID_BUILD_TOOLS_VERSION=36.0.0
+    // in ghcr.io/cirruslabs/android-sdk:36). Without this, AGP 8.11's default
+    // (35.0.0) triggers an sdkmanager auto-download inside the container, which
+    // stalls on "Waiting to fetch package.xml" when dl.google.com is slow.
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.infinityball.pitchpact"
@@ -36,6 +42,28 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric: real Room/SQLite on JVM (Android instrumentation
+            // runners are not available on this fleet's CI).
+            isIncludeAndroidResources = true
+        }
+    }
+
+    sourceSets {
+        getByName("test") {
+            // Shared cross-platform M2 fixture — same file the iOS store test
+            // loads from the repo checkout.
+            resources.srcDir("$rootDir/fixtures")
+        }
+    }
+}
+
+// Room writes schema JSON per version here on every build (v1 committed from
+// the first CI build; from M3 it becomes the migration validation baseline).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -54,4 +82,17 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    // RoomTeamStore serializes equipment lists with kotlinx-serialization;
+    // :shared does NOT expose the JSON artifact transitively.
+    implementation(libs.kotlinx.serialization.json)
+
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.junit.ext)
 }

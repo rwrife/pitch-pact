@@ -52,6 +52,9 @@ kotlin {
 android {
     namespace = "com.infinityball.pitchpact.shared"
     compileSdk = 36
+    // See androidApp: pin the build-tools the CI image ships so the lane
+    // never depends on an in-container sdkmanager download.
+    buildToolsVersion = "36.0.0"
     defaultConfig {
         minSdk = 27
     }

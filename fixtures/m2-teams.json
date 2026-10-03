@@ -1,0 +1,45 @@
+{
+  "teams": [
+    {
+      "id": "team-u8-falcons",
+      "name": "U8 Falcons",
+      "createdAtEpochMillis": 1759276800000
+    },
+    {
+      "id": "team-u10-owls",
+      "name": "U10 Owls",
+      "createdAtEpochMillis": 1759190400000,
+      "archivedAtEpochMillis": 1759276800000
+    }
+  ],
+  "players": [
+    {
+      "id": "player-ada",
+      "teamId": "team-u8-falcons",
+      "name": "Ada",
+      "jerseyNumber": 9,
+      "createdAtEpochMillis": 1759276800000
+    },
+    {
+      "id": "player-bo",
+      "teamId": "team-u8-falcons",
+      "name": "Bo",
+      "jerseyNumber": 7,
+      "createdAtEpochMillis": 1759276800000
+    },
+    {
+      "id": "player-cy",
+      "teamId": "team-u8-falcons",
+      "name": "Cy",
+      "jerseyNumber": 1,
+      "createdAtEpochMillis": 1759276800000
+    },
+    {
+      "id": "player-dee",
+      "teamId": "team-u10-owls",
+      "name": "Dee",
+      "jerseyNumber": 10,
+      "createdAtEpochMillis": 1759190400000
+    }
+  ]
+}

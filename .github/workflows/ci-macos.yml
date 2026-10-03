@@ -2,8 +2,8 @@ name: CI macOS (iOS)
 
 # macOS lane: exact Xcode 26.0.1 / 17A400 / iOS SDK 26.0 measurement (missing
 # exact pin = environment blocker, never a silent substitute), pre-build policy
-# greps, xcodebuild simulator build (drives the KMP embedAndSign loop), and
-# post-build Info.plist assertions.
+# greps, xcodebuild TEST on the simulator (drives the KMP embedAndSign loop +
+# M2 hosted unit tests), and post-build Info.plist assertions.
 
 on:
   pull_request:
@@ -41,8 +41,13 @@ jobs:
           # environment blocker and we stop.
           pick=""
           for app in /Applications/Xcode*.app/Contents/Developer; do
-            ver=$(DEVELOPER_DIR="$app" xcodebuild -version | head -1 | awk '{print $2}')
-            build=$(DEVELOPER_DIR="$app" xcodebuild -version | grep -i 'build version' | awk '{print $3}')
+            # Capture the FULL output via command substitution — piping
+            # xcodebuild into `head` races: head exits after line 1, xcodebuild
+            # then writes line 2 to a closed pipe and aborts (NSFileHandle
+            # broken pipe, exit 134). Verified flake on run 37160673173.
+            out=$(DEVELOPER_DIR="$app" xcodebuild -version)
+            ver=$(printf '%s\n' "$out" | awk 'NR==1{print $2}')
+            build=$(printf '%s\n' "$out" | grep -i 'build version' | awk '{print $3}')
             echo "candidate $app -> $ver ($build)"
             if [ "$ver" = "$EXPECTED_XCODE" ] && [ "$build" = "$EXPECTED_XCODE_BUILD" ]; then
               pick="$app"
@@ -60,18 +65,48 @@ jobs:
           echo "measured iphoneos SDK=$SDK_VER for $pick"
           [ "$SDK_VER" = "$EXPECTED_SDK" ] || { echo "::error::iPhoneOS SDK for pinned Xcode is $SDK_VER != $EXPECTED_SDK (environment blocker)"; exit 1; }
 
+      - name: Ensure iOS simulator platform runtime
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          # The macos-26 runner image no longer pre-installs the iOS 26.0
+          # simulator runtime for Xcode 26.0.1 (actions/runner-images#13570).
+          # Installing the pinned Xcode's OWN platform component is NOT a
+          # toolchain substitution: the exact 26.0.1 (17A400) pin selected
+          # above remains in force.
+          SDK_VER=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          RUNTIME_ID="com.apple.CoreSimulator.SimRuntime.iOS-$(echo "$SDK_VER" | cut -d. -f1,2 | tr '.' '-')"
+          echo "Pinned iphonesimulator SDK: $SDK_VER — required runtime id: $RUNTIME_ID"
+          if xcrun simctl list runtimes 2>/dev/null | grep -q "$RUNTIME_ID"; then
+            echo "Required runtime already present:"
+            xcrun simctl list runtimes | grep "$RUNTIME_ID"
+          else
+            echo "Required runtime missing — downloading platform for the pinned Xcode (this can take several minutes)..."
+            xcrun simctl list > /dev/null 2>&1 || true   # warm the simulator service
+            xcodebuild -downloadPlatform iOS -architectureVariant universal || true
+            if ! xcrun simctl list runtimes | grep -q "$RUNTIME_ID"; then
+              echo "::error::ACCEPTANCE BLOCKER: iOS $SDK_VER simulator runtime could not be installed on this runner (Apple may no longer serve this platform build). Available runtimes:"
+              xcrun simctl list runtimes || true
+              exit 1
+            fi
+            echo "Runtime installed:"
+            xcrun simctl list runtimes | grep "$RUNTIME_ID"
+          fi
+
       - name: Pre-build policy greps
         run: |
           set -euo pipefail
           PBX=iosApp/PitchPact.xcodeproj/project.pbxproj
-          # TARGETED_DEVICE_FAMILY = 1 in EVERY configuration (project + target x Debug/Release = 4)
+          # TARGETED_DEVICE_FAMILY = 1 in EVERY configuration: app + test
+          # targets x project/target x Debug/Release (M2 added the test
+          # target: 6 TOTAL entries, all == 1).
           COUNTS=$(grep -c 'TARGETED_DEVICE_FAMILY = 1;' "$PBX" || true)
           BAD=$(grep -c 'TARGETED_DEVICE_FAMILY' "$PBX" || true)
-          [ "$COUNTS" = "4" ] && [ "$BAD" = "4" ] || { echo "device-family pin wrong: $COUNTS/$BAD"; exit 1; }
-          # bundle prefix everywhere it appears
+          [ "$COUNTS" = "6" ] && [ "$BAD" = "6" ] || { echo "device-family pin wrong: $COUNTS/$BAD"; exit 1; }
+          # bundle prefix everywhere it appears (app x2 configs + test x2)
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact;' "$PBX"
-          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball' "$PBX" || true)" = "2" ]
-          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' "$PBX" || true)" = "2" ]
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball' "$PBX" || true)" = "4" ]
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' "$PBX" || true)" = "4" ]
           # no forbidden cross-platform UI frameworks anywhere in iOS sources/project
           if grep -rniE '\bflutter\b|react[ -]?native|\bexpo\b|\bunity\b|\bmaui\b|org\.jetbrains\.compose|import SwiftUICompose' iosApp/; then
             echo "forbidden cross-platform UI reference found"; exit 1
@@ -87,24 +122,34 @@ jobs:
           key: gradle-macos-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-macos-
 
-      - name: xcodebuild simulator build (runs embedAndSignAppleFrameworkForXcode)
+      - name: xcodebuild test (KMP embedAndSign + M2 hosted unit tests)
         run: |
           set -euo pipefail
           cd iosApp
           # arm64-only: KMP exports iosSimulatorArm64 (no iosX64 target — none
-          # of the fleet builds Intel slices). Generic destination + ARCHS
-          # override keeps the lane hermetic: no simulator device/runtime
-          # dependency, SDK = the 26.0 bundled with the pinned Xcode.
+          # of the fleet builds Intel slices). ARCHS override keeps the lane
+          # hermetic: no Intel slice, SDK = the 26.0 bundled with pinned Xcode.
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for d in devices:
+                  if d.get("isAvailable") and d["name"].startswith("iPhone 1"):
+                      print(d["udid"]); sys.exit(0)
+          sys.exit(1)')
+          [ -n "$DEVICE" ] || { echo "no available iPhone simulator device"; exit 1; }
+          echo "using simulator $DEVICE"
           xcodebuild \
             -project PitchPact.xcodeproj \
             -scheme PitchPact \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            test
 
       - name: Post-build Info.plist assertions
         run: |
@@ -117,10 +162,12 @@ jobs:
           [ "$BID" = "$BUNDLE_ID" ] || { echo "CFBundleIdentifier=$BID"; exit 1; }
           echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID"
 
-      - name: Upload build log
+      - name: Upload test results + build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-simulator-build
-          path: iosApp/build/DerivedData/Build/Products/**
+          name: ios-test-results
+          path: |
+            iosApp/build/DerivedData/Logs/Test/**
+            iosApp/build/DerivedData/Build/Products/**
           if-no-files-found: warn
