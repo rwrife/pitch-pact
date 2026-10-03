@@ -28,7 +28,7 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
     private val dao get() = db.teamDao()
     private val json = Json
 
-    override fun schemaVersion(): Long = db.openHelper.readableDatabase.version
+    override fun schemaVersion(): Long = db.openHelper.readableDatabase.version.toLong()
 
     // --- Teams ---
 

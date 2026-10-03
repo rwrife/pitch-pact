@@ -127,10 +127,10 @@ fun TeamDetailScreen(store: RoomTeamStore, teamId: String, onBack: () -> Unit) {
                     Text("vs ${u.opponentName}")
                     Text(
                         buildString {
-                            append("Home ${u.homeKit.primary.lowercase()}")
-                            u.homeKit.alternate?.let { append("/${it.lowercase()}") }
-                            append(" · Away ${u.awayKit.primary.lowercase()}")
-                            u.keeperKit?.let { append(" · Keeper ${it.primary.lowercase()}") }
+                            append("Home ${u.homeKit.primary.name.lowercase()}")
+                            u.homeKit.alternate?.let { append("/${it.name.lowercase()}") }
+                            append(" · Away ${u.awayKit.primary.name.lowercase()}")
+                            u.keeperKit?.let { append(" · Keeper ${it.primary.name.lowercase()}") }
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )

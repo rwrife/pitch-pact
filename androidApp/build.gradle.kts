@@ -77,6 +77,9 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    # RoomTeamStore serializes equipment lists with kotlinx-serialization;
+    # :shared does NOT expose the JSON artifact transitively.
+    implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
