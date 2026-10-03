@@ -8,6 +8,11 @@ plugins {
 android {
     namespace = "com.infinityball.pitchpact"
     compileSdk = 36
+    // Pin to the build-tools the CI image ships (ANDROID_BUILD_TOOLS_VERSION=36.0.0
+    // in ghcr.io/cirruslabs/android-sdk:36). Without this, AGP 8.11's default
+    // (35.0.0) triggers an sdkmanager auto-download inside the container, which
+    // stalls on "Waiting to fetch package.xml" when dl.google.com is slow.
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.infinityball.pitchpact"
