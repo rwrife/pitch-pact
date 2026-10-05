@@ -19,6 +19,7 @@ struct TeamsView: View {
 
     var body: some View {
         List {
+            NavigationLink("Games & tournaments") { ScheduleView() }
             Toggle("Show archived", isOn: $showArchived)
                 .accessibilityIdentifier("app.teams.showArchived")
                 .onChange(of: showArchived) { _, _ in reload() }
@@ -121,7 +122,7 @@ struct TeamsView: View {
         } message: { preview in
             Text(preview.blockingCount == 0
                  ? "This team has no players, uniforms, or guardian contacts. Deleting removes it permanently."
-                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts. This cannot be undone.")
+                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures. This cannot be undone.")
         }
     }
 

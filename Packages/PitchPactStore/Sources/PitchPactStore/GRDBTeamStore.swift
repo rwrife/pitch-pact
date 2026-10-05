@@ -88,6 +88,7 @@ struct GuardianRow: Codable, FetchableRecord, PersistableRecord {
 /// GRDB's own `grdb_migrations` table.
 public enum PitchPactMigrations {
     public static let v1Teams = "v1-teams-rosters-uniforms"
+    public static let v2Schedule = "v2-schedule-private-availability"
 
     public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -138,6 +139,22 @@ public enum PitchPactMigrations {
             }
         }
 
+        migrator.registerMigration(v2Schedule) { db in
+            for table in ["location", "tournament", "fixture"] {
+                try db.create(table: table) { t in
+                    t.column("id", .text).primaryKey()
+                    t.column("payload", .text).notNull()
+                }
+            }
+            // Private: fixture/player RSVP rows are never exported to the server.
+            try db.create(table: "availability") { t in
+                t.column("fixture_id", .text).notNull()
+                t.column("player_id", .text).notNull().indexed()
+                    .references("player", onDelete: .cascade)
+                t.column("choice", .text).notNull()
+                t.primaryKey(["fixture_id", "player_id"])
+            }
+        }
         return migrator
     }
 }
@@ -149,7 +166,7 @@ public enum PitchPactMigrations {
 /// Single-threaded by contract: the SwiftUI layer drives this from the main
 /// actor; DatabaseQueue serializes internally.
 public final class GRDBTeamStore {
-    private let writer: any DatabaseWriter
+    let writer: any DatabaseWriter
 
     public init(url: URL) throws {
         writer = try DatabaseQueue(path: url.path)
@@ -171,6 +188,7 @@ public final class GRDBTeamStore {
             ))
             var version = 0
             if applied.contains(PitchPactMigrations.v1Teams) { version = 1 }
+            if applied.contains(PitchPactMigrations.v2Schedule) { version = 2 }
             return version
         }
     }
@@ -220,7 +238,8 @@ extension GRDBTeamStore {
     }
 
     public func deletionPreview(id: String) throws -> TeamDeletionPreview {
-        try writer.read { db in
+        let fixtureCount = try fixtures().filter { $0.homeTeamId == id || $0.awayTeamId == id }.count
+        return try writer.read { db in
             TeamDeletionPreview(
                 teamId: id,
                 playerCount: try PlayerRow
@@ -235,7 +254,8 @@ extension GRDBTeamStore {
                     WHERE p.team_id = ?
                     """,
                     arguments: [id]
-                ) ?? 0
+                ) ?? 0,
+                fixtureCount: fixtureCount
             )
         }
     }
@@ -251,7 +271,12 @@ extension GRDBTeamStore {
                 "Team still holds \(preview.playerCount) players, \(preview.uniformRequirementCount) uniforms, \(preview.guardianContactCount) guardian contacts"
             )
         }
+        let dependentFixtures = try fixtures().filter { $0.homeTeamId == id || $0.awayTeamId == id }.map(\.id)
         try writer.write { db in
+            for fixtureId in dependentFixtures {
+                try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [fixtureId])
+                try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [fixtureId])
+            }
             _ = try TeamRow.deleteOne(db, key: id)
         }
     }

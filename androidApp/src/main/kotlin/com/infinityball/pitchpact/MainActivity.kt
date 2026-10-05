@@ -10,6 +10,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.infinityball.pitchpact.data.PitchPactDatabase
 import com.infinityball.pitchpact.data.RoomTeamStore
+import com.infinityball.pitchpact.data.RoomScheduleStore
+import com.infinityball.pitchpact.ui.ScheduleScreen
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Column
 import com.infinityball.pitchpact.ui.TeamDirectoryScreen
 import com.infinityball.pitchpact.ui.TeamDetailScreen
 import androidx.compose.material3.MaterialTheme
@@ -24,11 +29,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val store = RoomTeamStore(PitchPactDatabase.build(applicationContext))
+        val db = PitchPactDatabase.build(applicationContext)
+        val store = RoomTeamStore(db)
+        val schedule = RoomScheduleStore(db)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Navigation(store)
+                    Navigation(store, schedule)
                 }
             }
         }
@@ -36,14 +43,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Navigation(store: RoomTeamStore) {
+private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
+    var showSchedule by remember { mutableStateOf(false) }
     var selectedTeamId by remember { mutableStateOf<String?>(null) }
+    if (showSchedule) {
+        ScheduleScreen(store, schedule, onBack = { showSchedule = false })
+        return
+    }
     val team = selectedTeamId?.let { id -> store.team(id) }
     if (team == null) {
-        TeamDirectoryScreen(
-            store = store,
-            onOpenTeam = { selectedTeamId = it },
-        )
+        Column {
+            TextButton(onClick = { showSchedule = true }) { Text("Games & tournaments") }
+            TeamDirectoryScreen(
+                store = store,
+                onOpenTeam = { selectedTeamId = it },
+            )
+        }
     } else {
         TeamDetailScreen(
             store = store,

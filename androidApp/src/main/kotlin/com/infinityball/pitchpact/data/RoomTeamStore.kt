@@ -54,6 +54,7 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
             playerCount = dao.playerCount(id),
             uniformRequirementCount = dao.uniformCount(id),
             guardianContactCount = dao.guardianCountForTeam(id),
+            fixtureCount = RoomScheduleStore(db).fixtures().count { it.homeTeamId == id || it.awayTeamId == id },
         )
 
     override fun deleteTeam(id: String, requireEmpty: Boolean) = runBlocking {
@@ -65,6 +66,9 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
                     "Team still holds ${preview.playerCount} players, ${preview.uniformRequirementCount} uniforms, ${preview.guardianContactCount} guardian contacts",
                 )
             }
+            RoomScheduleStore(db).fixtures().filter { it.homeTeamId == id || it.awayTeamId == id }
+                .forEach { db.scheduleDao().deleteAvailability(it.id); db.scheduleDao().deleteFixture(it.id) }
+            dao.players(id).forEach { db.scheduleDao().deletePlayerAvailability(it.id) }
             dao.deleteGuardiansForAllPlayers(id)
             dao.players(id).forEach { dao.deletePlayer(it.id) }
             dao.uniforms(id).forEach { dao.deleteUniform(it.id) }
@@ -89,6 +93,7 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
 
     override fun deletePlayer(id: String) = runBlocking {
         db.withTransaction {
+            db.scheduleDao().deletePlayerAvailability(id)
             dao.deleteGuardiansForPlayer(id)
             dao.deletePlayer(id)
         }
