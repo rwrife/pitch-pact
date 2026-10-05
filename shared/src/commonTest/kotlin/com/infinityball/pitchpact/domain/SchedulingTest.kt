@@ -3,6 +3,7 @@ package com.infinityball.pitchpact.domain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class SchedulingTest {
     private fun fixture(id: String, home: String = "A", away: String = "B", field: String? = "F", start: Long = 100_000L) =
@@ -49,6 +50,18 @@ class SchedulingTest {
         // Fall-back repeated local hour: 01:30 EDT to 01:30 EST is also one hour.
         val fall = fixture("fall").copy(startEpochMillis = 1762065000000L, reminderMinutesBefore = 60)
         assertEquals(fall.startEpochMillis - 3600000, Scheduling.reminderEpochMillis(fall))
+    }
+
+    @Test fun schedulingCannotRewriteAnOfficialOrPendingScore() {
+        val official = fixture("o").copy(resultStatus = ResultStatus.OFFICIAL, officialHome = 1, officialAway = 0)
+        val violation = assertFailsWith<ValidationException> {
+            Scheduling.validateEdit(official, official.copy(homeTeamId = "C"))
+        }
+        assertEquals("fixture.result.locked", violation.code)
+        assertFailsWith<ValidationException> { Scheduling.validateEdit(official, official.copy(officialAway = 2)) }
+        Scheduling.validateEdit(official, official.copy(title = "Renamed"))
+        val pending = fixture("p").copy(resultStatus = ResultStatus.PENDING)
+        assertFailsWith<ValidationException> { Scheduling.validateEdit(pending, pending.copy(resultStatus = ResultStatus.OFFICIAL, officialHome = 0, officialAway = 0)) }
     }
 
     @Test fun privateRsvpAndOfficialOnlyStandings() {

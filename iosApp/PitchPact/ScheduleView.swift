@@ -23,6 +23,10 @@ struct ScheduleView: View {
     @State private var fixtures: [Fixture] = []
     @State private var title = ""
     @State private var place = ""
+    @State private var selectedLocationId = ""
+    @State private var editingLocationId: String?
+    @State private var editingTournamentId: String?
+    @State private var editingFixtureId: String?
     @State private var tournamentName = ""
     @State private var tournamentFormat: TournamentFormat = .ROUND_ROBIN
     @State private var home = ""
@@ -70,6 +74,12 @@ struct ScheduleView: View {
                             ForEach(Availability.allCases, id: \.self) { choice in Text(choice.rawValue).tag(Optional(choice)) }
                         }
                     }
+                    Button("Edit game") {
+                        editingFixtureId = game.id; title = game.title; home = game.homeTeamId; away = game.awayTeamId
+                        tournamentId = game.tournamentId ?? ""; selectedLocationId = game.locationId ?? ""
+                        kickoff = Date(timeIntervalSince1970: Double(game.startEpochMillis) / 1000)
+                        reminder = game.reminderMinutesBefore != nil
+                    }
                     Button("Delete game", role: .destructive) {
                         try? AppTeamStore.shared.deleteFixture(id: game.id)
                         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [game.id])
@@ -82,25 +92,30 @@ struct ScheduleView: View {
                     HStack {
                         Text(location.name)
                         Spacer()
+                        Button("Edit") { editingLocationId = location.id; place = location.name }
                         Button("Delete", role: .destructive) { try? AppTeamStore.shared.deleteLocation(id: location.id); reload() }
                     }
                 }
                 TextField("Field name or address", text: $place)
-                Button("Add location") {
+                Button(editingLocationId == nil ? "Add location" : "Save location") {
                     guard !place.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    try? AppTeamStore.shared.saveLocation(GameLocation(id: UUID().uuidString, name: place))
-                    place = ""; reload()
+                    try? AppTeamStore.shared.saveLocation(GameLocation(id: editingLocationId ?? UUID().uuidString, name: place))
+                    place = ""; editingLocationId = nil; reload()
                 }
             }
             Section("Tournaments") {
                 ForEach(tournaments) { tournament in
                     VStack(alignment: .leading) {
                         Text(tournament.name).font(.headline)
-                        ForEach(Array(sharedDraft(tournament).enumerated()), id: \.offset) { _, pairing in
-                            Text("Round \(pairing.round): \(teamName(pairing.homeTeamId)) vs \(teamName(pairing.awayTeamId))")
+                        ForEach(Array(sharedDraft(tournament).enumerated()), id: \.offset) { item in
+                            Text("Round \(item.element.round): \(teamName(item.element.homeTeamId)) vs \(teamName(item.element.awayTeamId))")
                         }
                         ForEach(sharedStandings(tournament), id: \.teamId) { standing in
                             Text("\(teamName(standing.teamId)): \(standing.points) pts · \(standing.played) official played")
+                        }
+                        Button("Edit tournament") {
+                            editingTournamentId = tournament.id; tournamentName = tournament.name
+                            tournamentFormat = tournament.format
                         }
                         Button("Delete tournament", role: .destructive) {
                             try? AppTeamStore.shared.deleteTournament(id: tournament.id); reload()
@@ -111,11 +126,12 @@ struct ScheduleView: View {
                 Picker("Format", selection: $tournamentFormat) {
                     ForEach(TournamentFormat.allCases, id: \.self) { format in Text(format.rawValue).tag(format) }
                 }
-                Button("Create tournament (all active teams)") {
+                Button(editingTournamentId == nil ? "Create tournament (all active teams)" : "Save tournament") {
                     guard teams.count >= 2, !tournamentName.isEmpty else { return }
-                    try? AppTeamStore.shared.saveTournament(Tournament(id: UUID().uuidString,
-                        name: tournamentName, teamIds: teams.map(\.id), format: tournamentFormat))
-                    tournamentName = ""; reload()
+                    let ids = tournaments.first(where: { $0.id == editingTournamentId })?.teamIds ?? teams.map(\.id)
+                    try? AppTeamStore.shared.saveTournament(Tournament(id: editingTournamentId ?? UUID().uuidString,
+                        name: tournamentName, teamIds: ids, format: tournamentFormat))
+                    tournamentName = ""; editingTournamentId = nil; reload()
                 }
             }
             Section("New fixture · tournament or ad-hoc") {
@@ -128,9 +144,9 @@ struct ScheduleView: View {
                     Text("Choose").tag("")
                     ForEach(teams) { Text($0.name).tag($0.id) }
                 }
-                Picker("Location", selection: $place) {
+                Picker("Location", selection: $selectedLocationId) {
                     Text("Unspecified").tag("")
-                    ForEach(locations) { Text($0.name).tag($0.name) }
+                    ForEach(locations) { Text($0.name).tag($0.id) }
                 }
                 Picker("Competition", selection: $tournamentId) {
                     Text("Ad-hoc league").tag("")
@@ -167,18 +183,22 @@ struct ScheduleView: View {
         decode(rules.rollup(fixtureId: fixtureId, playerIds: roster.map(\.id), responsesJson: json(responses)), AvailabilityRollup.self)
     }
     private func saveGame() {
-        let game = Fixture(id: UUID().uuidString, title: title, homeTeamId: home, awayTeamId: away,
+        let prior = fixtures.first(where: { $0.id == editingFixtureId })
+        let game = Fixture(id: editingFixtureId ?? UUID().uuidString, title: title, homeTeamId: home, awayTeamId: away,
             startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
-            locationId: locations.first(where: { $0.name == place })?.id,
+            locationId: selectedLocationId.isEmpty ? nil : selectedLocationId,
             tournamentId: tournamentId.isEmpty ? nil : tournamentId,
+            resultStatus: prior?.resultStatus ?? .UNSCORED,
+            officialHome: prior?.officialHome, officialAway: prior?.officialAway,
             reminderMinutesBefore: reminder ? 60 : nil)
         let encoded = json(game)
         // Calling shared rules first makes invalid fixtures impossible to save; the warning names the existing clash.
         do {
-            let validation = rules.validateFixture(fixtureJson: encoded)
+            let validation = rules.validateEdit(previousJson: prior.map { json($0) } ?? "null", nextJson: encoded)
             guard validation == "OK" else { feedback = validation; return }
             let conflicts = decode(rules.conflicts(fixtureJson: encoded, existingJson: json(fixtures)), [ScheduleConflict].self) ?? []
             try AppTeamStore.shared.saveFixture(game)
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [game.id])
             feedback = conflicts.isEmpty ? "Saved" : conflicts.map(\.reason).joined(separator: "; ")
             if reminder {
                 let timestamp = rules.reminderTimestamp(fixtureJson: encoded)
@@ -193,7 +213,7 @@ struct ScheduleView: View {
                     }
                 }
             }
-            title = ""; reload()
+            title = ""; editingFixtureId = nil; reload()
         } catch { feedback = error.localizedDescription }
     }
     private func reload() {

@@ -22,15 +22,32 @@ extension GRDBTeamStore {
                            arguments: [id, payload])
         }
     }
-    private func remove(id: String, table: String) throws {
-        try writer.write { db in try db.execute(sql: "DELETE FROM \(table) WHERE id = ?", arguments: [id]) }
-    }
     public func saveLocation(_ location: GameLocation) throws { try upsert(location, id: location.id, table: "location") }
     public func locations() throws -> [GameLocation] { try records(GameLocation.self, table: "location") }
-    public func deleteLocation(id: String) throws { try remove(id: id, table: "location") }
+    public func deleteLocation(id: String) throws {
+        let affected = try fixtures().filter { $0.locationId == id }.map { game -> Fixture in
+            var updated = game; updated.locationId = nil; return updated
+        }
+        try writer.write { db in
+            for game in affected {
+                try db.execute(sql: "UPDATE fixture SET payload = ? WHERE id = ?", arguments: [try encode(game), game.id])
+            }
+            try db.execute(sql: "DELETE FROM location WHERE id = ?", arguments: [id])
+        }
+    }
     public func saveTournament(_ tournament: Tournament) throws { try upsert(tournament, id: tournament.id, table: "tournament") }
     public func tournaments() throws -> [Tournament] { try records(Tournament.self, table: "tournament") }
-    public func deleteTournament(id: String) throws { try remove(id: id, table: "tournament") }
+    public func deleteTournament(id: String) throws {
+        let affected = try fixtures().filter { $0.tournamentId == id }.map { game -> Fixture in
+            var updated = game; updated.tournamentId = nil; updated.round = nil; return updated
+        }
+        try writer.write { db in
+            for game in affected {
+                try db.execute(sql: "UPDATE fixture SET payload = ? WHERE id = ?", arguments: [try encode(game), game.id])
+            }
+            try db.execute(sql: "DELETE FROM tournament WHERE id = ?", arguments: [id])
+        }
+    }
     public func saveFixture(_ fixture: Fixture) throws { try upsert(fixture, id: fixture.id, table: "fixture") }
     public func fixtures() throws -> [Fixture] { try records(Fixture.self, table: "fixture").sorted { $0.startEpochMillis < $1.startEpochMillis } }
     public func deleteFixture(id: String) throws {

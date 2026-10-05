@@ -36,6 +36,16 @@ object Scheduling {
             throw ValidationException("fixture.result.invalid", "Official result requires nonnegative accepted scores")
     }
 
+    fun validateEdit(previous: Fixture?, next: Fixture) {
+        validate(next)
+        if (previous != null && previous.resultStatus != ResultStatus.UNSCORED &&
+            (previous.homeTeamId != next.homeTeamId || previous.awayTeamId != next.awayTeamId ||
+                previous.resultStatus != next.resultStatus || previous.officialHome != next.officialHome ||
+                previous.officialAway != next.officialAway)) {
+            throw ValidationException("fixture.result.locked", "Scored fixture teams and results cannot be changed by scheduling")
+        }
+    }
+
     fun conflicts(candidate: Fixture, others: List<Fixture>): List<ScheduleConflict> {
         validate(candidate)
         val end = candidate.startEpochMillis + candidate.durationMinutes * 60_000L

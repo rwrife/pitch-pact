@@ -12,6 +12,11 @@ class SchedulingFacade {
         Scheduling.validate(fixture)
         "OK"
     }.getOrElse { "ERROR:${it.message}" }
+    fun validateEdit(previousJson: String, nextJson: String): String = runCatching {
+        val prior = if (previousJson == "null") null else json.decodeFromString(Fixture.serializer(), previousJson)
+        Scheduling.validateEdit(prior, json.decodeFromString(Fixture.serializer(), nextJson))
+        "OK"
+    }.getOrElse { "ERROR:${it.message}" }
     fun conflicts(fixtureJson: String, existingJson: String): String = json.encodeToString(
         ListSerializer(ScheduleConflict.serializer()), Scheduling.conflicts(
             json.decodeFromString(Fixture.serializer(), fixtureJson),

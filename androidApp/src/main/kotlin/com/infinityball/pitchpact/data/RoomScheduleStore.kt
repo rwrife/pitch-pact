@@ -15,16 +15,30 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
         dao.saveLocation(LocationRow(location.id, json.encodeToString(Location.serializer(), location)))
     }
     override fun locations() = dao.locations().map { json.decodeFromString(Location.serializer(), it.payload) }
-    override fun deleteLocation(id: String) = dao.deleteLocation(id)
+    override fun deleteLocation(id: String) = runBlocking {
+        db.withTransaction {
+            fixtures().filter { it.locationId == id }.forEach { game ->
+                dao.saveFixture(FixtureRow(game.id, json.encodeToString(Fixture.serializer(), game.copy(locationId = null))))
+            }
+            dao.deleteLocation(id)
+        }
+    }
     override fun saveTournament(tournament: Tournament) {
         require(tournament.name.isNotBlank()) { "Tournament name required" }
         dao.saveTournament(TournamentRow(tournament.id, json.encodeToString(Tournament.serializer(), tournament)))
     }
     override fun tournaments() = dao.tournaments().map { json.decodeFromString(Tournament.serializer(), it.payload) }
-    override fun deleteTournament(id: String) = dao.deleteTournament(id)
+    override fun deleteTournament(id: String) = runBlocking {
+        db.withTransaction {
+            fixtures().filter { it.tournamentId == id }.forEach { game ->
+                dao.saveFixture(FixtureRow(game.id, json.encodeToString(Fixture.serializer(), game.copy(tournamentId = null, round = null))))
+            }
+            dao.deleteTournament(id)
+        }
+    }
     override fun saveFixture(fixture: Fixture): List<ScheduleConflict> = runBlocking {
         db.withTransaction {
-            Scheduling.validate(fixture)
+            Scheduling.validateEdit(fixtures().firstOrNull { it.id == fixture.id }, fixture)
             val conflicts = Scheduling.conflicts(fixture, fixtures())
             dao.saveFixture(FixtureRow(fixture.id, json.encodeToString(Fixture.serializer(), fixture)))
             conflicts // warnings returned, never silently block
