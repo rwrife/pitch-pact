@@ -6,6 +6,7 @@ DerivedData/
 
 # Gradle / Kotlin / Android
 .gradle/
+.gradle-user/
 build/
 local.properties
 .idea/

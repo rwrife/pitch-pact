@@ -18,7 +18,7 @@ struct GRDBTeamStoreTests {
 
     @Test("schema is version one")
     func schemaIsVersionOne() throws {
-        #expect(try makeStore().schemaVersion() == 1)
+        #expect(try makeStore().schemaVersion() == 2)
     }
 
     @Test("round-trips the shared cross-platform fixture")
@@ -174,14 +174,9 @@ struct GRDBTeamStoreTests {
         }
     }
 
-    @Test("v1 migration applies exactly once and is recorded")
+    @Test("v1 and v2 migrations are recorded")
     func migrationRecorded() throws {
-        // The store's schemaVersion getter derives from the applied-migration
-        // registry; re-opening the same file must not re-apply (idempotent).
         let store = try makeStore()
-        #expect(try store.schemaVersion() == 1)
-        // Forward test: a fresh store starts at v1 (no v2 exists yet); the
-        // migration registry contains exactly the v1 identifier.
-        // (v1 -> v2 upgrade-path test lands WITH the M3 migration.)
+        #expect(try store.schemaVersion() == 2)
     }
 }

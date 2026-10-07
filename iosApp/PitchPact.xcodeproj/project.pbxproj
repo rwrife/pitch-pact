@@ -11,6 +11,7 @@
 		AA00000000000000000000B6 /* TeamsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* TeamsView.swift */; };
 		AA00000000000000000000B7 /* TeamDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* TeamDetailView.swift */; };
 		AA00000000000000000000B8 /* TeamStoreFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A9 /* TeamStoreFactory.swift */; };
+		AA00000000000000000000B9 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000AB /* ScheduleView.swift */; };
 		AA00000000000000000000B10 /* PitchPactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A11 /* PitchPactTests.swift */; };
 		PBPP0000000000000000000003 /* PitchPactStore in Frameworks */ = {isa = PBXBuildFile; productRef = PBPP0000000000000000000002 /* PitchPactStore */; };
 		PBPP0000000000000000000005 /* PitchPactStore in Frameworks */ = {isa = PBXBuildFile; productRef = PBPP0000000000000000000004 /* PitchPactStore */; };
@@ -32,6 +33,7 @@
 		AA00000000000000000000A7 /* TeamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsView.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A8 /* TeamDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDetailView.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A9 /* TeamStoreFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamStoreFactory.swift; sourceTree = "<group>"; };
+		AA00000000000000000000AB /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A10 /* PitchPactTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PitchPactTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000A11 /* PitchPactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -72,6 +74,7 @@
 				AA00000000000000000000A7 /* TeamsView.swift */,
 				AA00000000000000000000A8 /* TeamDetailView.swift */,
 				AA00000000000000000000A9 /* TeamStoreFactory.swift */,
+				AA00000000000000000000AB /* ScheduleView.swift */,
 			);
 			path = PitchPact;
 			sourceTree = "<group>";
@@ -224,6 +227,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA00000000000000000000B8 /* TeamStoreFactory.swift in Sources */,
+				AA00000000000000000000B9 /* ScheduleView.swift in Sources */,
 				AA00000000000000000000B6 /* TeamsView.swift in Sources */,
 				AA00000000000000000000B1 /* PitchPactApp.swift in Sources */,
 				AA00000000000000000000B7 /* TeamDetailView.swift in Sources */,
