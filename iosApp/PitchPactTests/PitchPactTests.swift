@@ -12,6 +12,10 @@ import Testing
 import Foundation
 @testable import PitchPact
 import PitchPactStore
+@preconcurrency import PitchPactShared
+
+private typealias Team = PitchPactStore.Team
+private typealias Player = PitchPactStore.Player
 
 @Suite("M2 app integration (simulator)")
 struct PitchPactTests {
@@ -46,11 +50,11 @@ struct PitchPactTests {
             return
         }
         let data = try Data(contentsOf: fixtureURL)
-        struct Fixture: Decodable {
-            let teams: [Team]
-            let players: [Player]
+        struct M2Payload: Decodable {
+            let teams: [PitchPactStore.Team]
+            let players: [PitchPactStore.Player]
         }
-        let fixture = try JSONDecoder().decode(Fixture.self, from: data)
+        let fixture = try JSONDecoder().decode(M2Payload.self, from: data)
 
         // Use a scratch store so the app's real database is untouched.
         let store = try GRDBTeamStore(inMemory: true)
@@ -73,5 +77,16 @@ struct PitchPactTests {
             #expect(failure.code == "jersey.clash")
             #expect(failure.message == "Jersey #9 already worn by Bo")
         }
+    }
+
+    @Test("pending standings cross the KMP-to-Swift bridge without becoming zero-filled")
+    func pendingStandingsBridge() throws {
+        let fixture = PitchPactStore.Fixture(id: "f1", title: "Pending", homeTeamId: "a", awayTeamId: "b",
+            startEpochMillis: 1, resultStatus: .PENDING)
+        let json = String(decoding: try JSONEncoder().encode([fixture]), as: UTF8.self)
+        let wire = SchedulingFacade().standings(teamIds: ["a", "b"], fixturesJson: json)
+        let standing = try JSONDecoder().decode([PitchPactStore.Standing].self, from: Data(wire.utf8))
+        #expect(standing.count == 2)
+        #expect(standing.allSatisfy { $0.pendingFixtures == 1 && $0.played == 0 })
     }
 }

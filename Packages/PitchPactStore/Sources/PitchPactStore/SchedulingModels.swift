@@ -46,5 +46,5 @@ public struct AvailabilityRollup: Codable, Sendable {
     public var yes: Int; public var no: Int; public var maybe: Int; public var unanswered: Int
 }
 public struct Standing: Codable, Sendable {
-    public var teamId: String; public var played: Int; public var points: Int; public var goalsFor: Int; public var goalsAgainst: Int
+    public var teamId: String; public var played: Int; public var points: Int; public var goalsFor: Int; public var goalsAgainst: Int; public var pendingFixtures: Int
 }

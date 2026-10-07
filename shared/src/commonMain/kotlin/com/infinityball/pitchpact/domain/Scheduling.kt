@@ -21,7 +21,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class AvailabilityRollup(val yes: Int, val no: Int, val maybe: Int, val unanswered: Int)
 @Serializable data class DraftPairing(val round: Int, val homeTeamId: String?, val awayTeamId: String?)
 @Serializable data class ScheduleConflict(val fixtureId: String, val fixtureTitle: String, val reason: String)
-@Serializable data class Standing(val teamId: String, val played: Int, val points: Int, val goalsFor: Int, val goalsAgainst: Int)
+@Serializable data class Standing(val teamId: String, val played: Int, val points: Int, val goalsFor: Int, val goalsAgainst: Int, val pendingFixtures: Int = 0)
 
 /** Deterministic pure scheduling rules; UI calls these instead of reimplementing them. */
 object Scheduling {
@@ -110,6 +110,7 @@ object Scheduling {
             val against = if (f.homeTeamId == id) f.officialAway!! else f.officialHome!!
             if (own > against) 3 else if (own == against) 1 else 0
         }, games.sumOf { if (it.homeTeamId == id) it.officialHome!! else it.officialAway!! },
-            games.sumOf { if (it.homeTeamId == id) it.officialAway!! else it.officialHome!! })
+            games.sumOf { if (it.homeTeamId == id) it.officialAway!! else it.officialHome!! },
+            fixtures.count { it.resultStatus == ResultStatus.PENDING && (it.homeTeamId == id || it.awayTeamId == id) })
     }.sortedWith(compareByDescending<Standing> { it.points }.thenByDescending { it.goalsFor - it.goalsAgainst }.thenBy { it.teamId })
 }

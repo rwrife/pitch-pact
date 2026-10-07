@@ -26,4 +26,11 @@ struct GRDBScheduleStoreTests {
         #expect(try store.fixtures().isEmpty)
         #expect(try store.availability(fixtureId: "f").isEmpty)
     }
+
+    @Test func standingsPendingFixturesRoundTrip() throws {
+        let standing = Standing(teamId: "a", played: 1, points: 3, goalsFor: 2, goalsAgainst: 1, pendingFixtures: 2)
+        let data = try JSONEncoder().encode(standing)
+        let decoded = try JSONDecoder().decode(Standing.self, from: data)
+        #expect(decoded.pendingFixtures == 2)
+    }
 }

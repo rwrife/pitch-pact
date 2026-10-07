@@ -35,18 +35,27 @@ struct ScheduleView: View {
     @State private var kickoff = Date().addingTimeInterval(86_400)
     @State private var reminder = false
     @State private var selectedFixtureId: String?
+    @State private var showPastGames = false
+    @State private var durationMinutes = 90
     @State private var feedback = ""
     private let rules = SchedulingFacade()
 
     var body: some View {
         Form {
-            Section("Upcoming games") {
-                ForEach(fixtures.filter { $0.startEpochMillis >= Int64(Date().timeIntervalSince1970 * 1000) }) { fixture in
+            Section("Games") {
+                Toggle("Show past games", isOn: $showPastGames)
+                ForEach(fixtures.filter { showPastGames || $0.startEpochMillis >= Int64(Date().timeIntervalSince1970 * 1000) }) { fixture in
                     Button {
                         selectedFixtureId = fixture.id
                     } label: {
                         VStack(alignment: .leading) {
-                            Text(fixture.title)
+                            HStack {
+                                Text(fixture.title)
+                                Spacer()
+                                if fixture.startEpochMillis < Int64(Date().timeIntervalSince1970 * 1000) {
+                                    Text("Past").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                             Text(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000), style: .date)
                             if fixture.resultStatus == .PENDING { Text("Result pending review").foregroundStyle(.orange) }
                         }
@@ -111,7 +120,8 @@ struct ScheduleView: View {
                             Text("Round \(item.element.round): \(teamName(item.element.homeTeamId)) vs \(teamName(item.element.awayTeamId))")
                         }
                         ForEach(sharedStandings(tournament), id: \.teamId) { standing in
-                            Text("\(teamName(standing.teamId)): \(standing.points) pts · \(standing.played) official played")
+                            Text("\(teamName(standing.teamId)): \(standing.points) pts · \(standing.played) official played" +
+                                (standing.pendingFixtures > 0 ? " (\(standing.pendingFixtures) pending review)" : ""))
                         }
                         Button("Edit tournament") {
                             editingTournamentId = tournament.id; tournamentName = tournament.name

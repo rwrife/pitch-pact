@@ -51,10 +51,15 @@ import java.util.UUID
     var editingTournament by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton(onClick = onBack) { Text("← Teams") }
-        Text("Upcoming games", style = MaterialTheme.typography.headlineMedium)
-        games.filter { it.startEpochMillis >= System.currentTimeMillis() }.forEach { game ->
+        var showPast by remember { mutableStateOf(false) }
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Text("Games", style = MaterialTheme.typography.headlineMedium)
+            FilterChip(selected = showPast, onClick = { showPast = !showPast }, label = { Text("Include past") })
+        }
+        games.filter { showPast || it.startEpochMillis >= System.currentTimeMillis() }.forEach { game ->
             TextButton(onClick = { selectedGame = game.id }) {
                 Text("${game.title} · ${DateFormat.getDateTimeInstance().format(Date(game.startEpochMillis))}" +
+                    (if (game.startEpochMillis < System.currentTimeMillis()) " (past)" else "") +
                     if (game.resultStatus == ResultStatus.PENDING) " · result pending" else "")
             }
         }
@@ -103,7 +108,8 @@ import java.util.UUID
             val draft = Scheduling.draft(tournament.teamIds, tournament.format)
             draft.forEach { pairing -> Text("Round ${pairing.round}: ${pairing.homeTeamId ?: "TBD"} vs ${pairing.awayTeamId ?: "BYE/TBD"}") }
             val standings = Scheduling.standings(tournament.teamIds, games.filter { it.tournamentId == tournament.id })
-            standings.forEach { Text("${it.teamId}: ${it.points} pts (${it.played} official played)") }
+            standings.forEach { Text("${it.teamId}: ${it.points} pts (${it.played} official played)" +
+                if (it.pendingFixtures > 0) " · ${it.pendingFixtures} pending review" else "") }
             TextButton(onClick = {
                 editingTournament = tournament.id; tournamentName = tournament.name; format = tournament.format
             }) { Text("Edit tournament") }

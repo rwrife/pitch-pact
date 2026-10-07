@@ -69,7 +69,9 @@ class SchedulingTest {
             AvailabilityResponse("g", "p1", Availability.YES), AvailabilityResponse("g", "p2", Availability.NO))))
         val pending = fixture("pending").copy(resultStatus = ResultStatus.PENDING)
         val official = fixture("official").copy(resultStatus = ResultStatus.OFFICIAL, officialHome = 2, officialAway = 1)
-        assertEquals(Standing("A", 1, 3, 2, 1), Scheduling.standings(listOf("A", "B"), listOf(pending, official)).first())
-        assertEquals(0, Scheduling.standings(listOf("A", "B"), listOf(pending)).first().played)
+        assertEquals(Standing("A", 1, 3, 2, 1, pendingFixtures = 1), Scheduling.standings(listOf("A", "B"), listOf(pending, official)).first())
+        val provisional = Scheduling.standings(listOf("A", "B"), listOf(pending))
+        assertTrue(provisional.all { it.played == 0 && it.pendingFixtures == 1 })
+        assertEquals(0, Scheduling.standings(listOf("A", "B"), emptyList()).first().pendingFixtures)
     }
 }
