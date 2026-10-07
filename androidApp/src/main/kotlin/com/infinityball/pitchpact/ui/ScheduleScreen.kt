@@ -27,8 +27,12 @@ import java.util.UUID
 @Composable fun ScheduleScreen(teamStore: RoomTeamStore, schedule: RoomScheduleStore, onBack: () -> Unit) {
     val context = LocalContext.current
     var reminder by remember { mutableStateOf(false) }
+    var warning by remember { mutableStateOf("") }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (!granted) reminder = false
+        if (!granted) {
+            reminder = false
+            warning = "Notifications denied — enable them in Settings to use reminders"
+        }
     }
     var revision by remember { mutableIntStateOf(0) }
     val teams = remember(revision) { teamStore.teams() }
@@ -44,7 +48,6 @@ import java.util.UUID
     var selectedTournament by remember { mutableStateOf<String?>(null) }
     var format by remember { mutableStateOf(TournamentFormat.ROUND_ROBIN) }
     var start by remember { mutableLongStateOf(System.currentTimeMillis() + 86_400_000L) }
-    var warning by remember { mutableStateOf("") }
     var selectedGame by remember { mutableStateOf<String?>(null) }
     var editingGame by remember { mutableStateOf<String?>(null) }
     var editingLocation by remember { mutableStateOf<String?>(null) }

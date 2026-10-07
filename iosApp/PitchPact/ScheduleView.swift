@@ -87,12 +87,14 @@ struct ScheduleView: View {
                         editingFixtureId = game.id; title = game.title; home = game.homeTeamId; away = game.awayTeamId
                         tournamentId = game.tournamentId ?? ""; selectedLocationId = game.locationId ?? ""
                         kickoff = Date(timeIntervalSince1970: Double(game.startEpochMillis) / 1000)
-                        reminder = game.reminderMinutesBefore != nil
+                        reminder = game.reminderMinutesBefore != nil; durationMinutes = game.durationMinutes
                     }
                     Button("Delete game", role: .destructive) {
-                        try? AppTeamStore.shared.deleteFixture(id: game.id)
-                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [game.id])
-                        selectedFixtureId = nil; reload()
+                        do {
+                            try AppTeamStore.shared.deleteFixture(id: game.id)
+                            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [game.id])
+                            selectedFixtureId = nil; reload()
+                        } catch { feedback = error.localizedDescription }
                     }
                 }
             }
@@ -163,6 +165,7 @@ struct ScheduleView: View {
                     ForEach(tournaments) { Text($0.name).tag($0.id) }
                 }
                 DatePicker("Kickoff", selection: $kickoff)
+                Stepper("Duration: \(durationMinutes) minutes", value: $durationMinutes, in: 1...1440)
                 Toggle("Remind me one hour before (local)", isOn: $reminder)
                 Button("Save game", action: saveGame)
                 if !feedback.isEmpty { Text(feedback).foregroundStyle(.orange) }
@@ -196,6 +199,7 @@ struct ScheduleView: View {
         let prior = fixtures.first(where: { $0.id == editingFixtureId })
         let game = Fixture(id: editingFixtureId ?? UUID().uuidString, title: title, homeTeamId: home, awayTeamId: away,
             startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
+            durationMinutes: durationMinutes,
             locationId: selectedLocationId.isEmpty ? nil : selectedLocationId,
             tournamentId: tournamentId.isEmpty ? nil : tournamentId,
             resultStatus: prior?.resultStatus ?? .UNSCORED,
@@ -214,12 +218,17 @@ struct ScheduleView: View {
                 let timestamp = rules.reminderTimestamp(fixtureJson: encoded)
                 let fireDate = Date(timeIntervalSince1970: Double(timestamp) / 1000)
                 if fireDate > Date() {
-                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
-                        guard granted else { return }
-                        let content = UNMutableNotificationContent()
-                        content.title = "Upcoming game"; content.body = game.title
-                        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fireDate.timeIntervalSinceNow), repeats: false)
-                        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: game.id, content: content, trigger: trigger))
+                    Task { @MainActor in
+                        do {
+                            let center = UNUserNotificationCenter.current()
+                            guard try await center.requestAuthorization(options: [.alert, .sound]) else {
+                                feedback += "; notifications denied — enable them in Settings"; return
+                            }
+                            let content = UNMutableNotificationContent()
+                            content.title = "Upcoming game"; content.body = game.title
+                            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fireDate.timeIntervalSinceNow), repeats: false)
+                            try await center.add(UNNotificationRequest(identifier: game.id, content: content, trigger: trigger))
+                        } catch { feedback += "; reminder failed: \(error.localizedDescription)" }
                     }
                 }
             }

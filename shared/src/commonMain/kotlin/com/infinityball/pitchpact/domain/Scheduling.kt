@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 @Serializable enum class ResultStatus { UNSCORED, PENDING, OFFICIAL }
 @Serializable data class Fixture(
     val id: String, val title: String, val homeTeamId: String, val awayTeamId: String,
-    val startEpochMillis: Long, val durationMinutes: Int, val locationId: String?,
+    val startEpochMillis: Long, val durationMinutes: Int, val locationId: String? = null,
     val tournamentId: String? = null, val round: Int? = null,
     val resultStatus: ResultStatus = ResultStatus.UNSCORED,
     val officialHome: Int? = null, val officialAway: Int? = null,

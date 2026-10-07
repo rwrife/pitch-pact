@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 import PitchPactStore
 
 struct TeamsView: View {
@@ -112,9 +113,12 @@ struct TeamsView: View {
         ) { preview in
             Button("Delete everything", role: .destructive) {
                 if let team = deleteTarget {
-                    try? AppTeamStore.shared.deleteTeam(id: team.id, requireEmpty: false)
-                    deleteTarget = nil
-                    reload()
+                    do {
+                        let ids = try AppTeamStore.shared.fixtures().filter { $0.homeTeamId == team.id || $0.awayTeamId == team.id }.map(\.id)
+                        try AppTeamStore.shared.deleteTeam(id: team.id, requireEmpty: false)
+                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+                        deleteTarget = nil; reload()
+                    } catch { createError = error.localizedDescription; deleteTarget = nil }
                 }
             }
             .accessibilityIdentifier("app.teams.confirmDelete")

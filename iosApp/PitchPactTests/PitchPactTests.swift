@@ -79,6 +79,7 @@ struct PitchPactTests {
         }
     }
 
+    @MainActor
     @Test("pending standings cross the KMP-to-Swift bridge without becoming zero-filled")
     func pendingStandingsBridge() throws {
         let fixture = PitchPactStore.Fixture(id: "f1", title: "Pending", homeTeamId: "a", awayTeamId: "b",

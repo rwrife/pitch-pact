@@ -56,6 +56,7 @@ private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
             TextButton(onClick = { showSchedule = true }) { Text("Games & tournaments") }
             TeamDirectoryScreen(
                 store = store,
+                schedule = schedule,
                 onOpenTeam = { selectedTeamId = it },
             )
         }

@@ -64,6 +64,14 @@ class SchedulingTest {
         assertFailsWith<ValidationException> { Scheduling.validateEdit(pending, pending.copy(resultStatus = ResultStatus.OFFICIAL, officialHome = 0, officialAway = 0)) }
     }
 
+    @Test fun swiftOmittedNilLocationDecodesForStandings() {
+        val wire = """[{"id":"p","title":"Pending","homeTeamId":"A","awayTeamId":"B","startEpochMillis":1,"durationMinutes":90,"resultStatus":"PENDING"}]"""
+        val result = com.infinityball.pitchpact.SchedulingFacade().standings(listOf("A", "B"), wire)
+        val rows = kotlinx.serialization.json.Json.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(Standing.serializer()), result)
+        assertTrue(rows.all { it.pendingFixtures == 1 && it.played == 0 })
+    }
+
     @Test fun privateRsvpAndOfficialOnlyStandings() {
         assertEquals(AvailabilityRollup(1, 1, 0, 1), Scheduling.rollup("g", listOf("p1", "p2", "p3"), listOf(
             AvailabilityResponse("g", "p1", Availability.YES), AvailabilityResponse("g", "p2", Availability.NO))))

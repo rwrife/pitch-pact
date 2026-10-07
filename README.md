@@ -90,7 +90,7 @@ This is a youth-sports product; the privacy posture is strict by design.
 
 1. M1: KMP `shared` domain core + project skeletons + CI gates — **merged** (shared ledger + consensus state machine + v0 DTO envelope, iOS/Android/server targets, dual CI lanes)
 2. M2: Team/roster/uniform UX on iOS and Android — **merged** (shared entities + validation, GRDB v1 + SwiftUI CRUD, Room v1 + Compose CRUD, private guardian-contact serialization gate; evidence: [docs/m2-evidence.md](docs/m2-evidence.md))
-3. M3: Tournaments, scheduling, reminders, availability — **in review** (shared scheduling rules and privacy tests; native UX/CI evidence pending)
+3. M3: Tournaments, scheduling, reminders, availability — **in review** (shared deterministic scheduling rules, private RSVP storage, local reminders, dual native UX; exact-head native CI pending)
 4. M4: Match-day scoring engine + play-by-play UX (offline-first)
 5. M5: Hosted broadcast service + spectator read-only experience
 6. M6: Global team registry, team codes, cross-team fixture coordination

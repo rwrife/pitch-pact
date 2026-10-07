@@ -28,6 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.infinityball.pitchpact.data.RoomScheduleStore
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -42,7 +44,8 @@ import com.infinityball.pitchpact.data.RoomTeamStore
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TeamDirectoryScreen(store: RoomTeamStore, onOpenTeam: (String) -> Unit) {
+fun TeamDirectoryScreen(store: RoomTeamStore, schedule: RoomScheduleStore, onOpenTeam: (String) -> Unit) {
+    val context = LocalContext.current
     var refresh by remember { mutableStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
     var showCreate by remember { mutableStateOf(false) }
@@ -160,6 +163,8 @@ fun TeamDirectoryScreen(store: RoomTeamStore, onOpenTeam: (String) -> Unit) {
             confirmButton = {
                 TextButton(
                     onClick = {
+                        schedule.fixtures().filter { it.homeTeamId == team.id || it.awayTeamId == team.id }
+                            .forEach { LocalGameReminders.cancel(context, it.id) }
                         store.deleteTeam(team.id, requireEmpty = false)
                         deleteTarget = null
                         refresh++
