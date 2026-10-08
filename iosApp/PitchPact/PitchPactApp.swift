@@ -14,7 +14,9 @@ struct PitchPactApp: App {
     var body: some Scene {
         WindowGroup {
             NavigationStack {
-                TeamsView()
+                if ProcessInfo.processInfo.arguments.contains("--m4-ui-test") {
+                    MatchDayView(fixtureId: "m4-ui-fixture")
+                } else { TeamsView() }
             }
             .accessibilityIdentifier("app.root")
         }

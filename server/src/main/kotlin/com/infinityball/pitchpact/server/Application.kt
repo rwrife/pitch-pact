@@ -25,11 +25,29 @@ import io.ktor.server.routing.routing
  * Hosted deployment (pitchpact.infinityball.com) is a separate, user-owned
  * step — this module ships the container, nothing more.
  */
-fun Application.appModule() {
+fun Application.appModule(
+    matchRepository: MatchRepository? = null,
+    authorize: (String, String?) -> Boolean = { _, _ -> false },
+) {
     install(ContentNegotiation) {
         json(PitchPactJson.codec)
     }
     routing {
+        post("/v0/matches/{id}/events") {
+            val id = call.parameters["id"] ?: ""
+            if (!authorize(id, call.request.headers["Authorization"])) {
+                call.respond(io.ktor.http.HttpStatusCode.Forbidden); return@post
+            }
+            val repository = matchRepository
+            if (repository == null) { call.respond(io.ktor.http.HttpStatusCode.ServiceUnavailable); return@post }
+            try {
+                val request = call.receive<com.infinityball.pitchpact.domain.MatchSyncRequest>()
+                require(request.matchId == id)
+                call.respond(repository.receive(request))
+            } catch (e: IllegalArgumentException) {
+                call.respond(io.ktor.http.HttpStatusCode.Conflict, "Invalid or conflicting match facts")
+            }
+        }
         get("/healthz") {
             // Raw wire text keeps the protocol field exactly as the shared
             // codec produces it (no server-side reinterpretation).
@@ -54,6 +72,11 @@ fun Application.appModule() {
 fun main(args: Array<String>) {
     val port = (System.getenv("PORT") ?: args.getOrNull(0)?.takeIf { it.toIntOrNull() != null } ?: "8080").toInt()
     embeddedServer(Netty, port = port) {
-        appModule()
+        val matchId = System.getenv("MATCH_ID")
+        val capability = System.getenv("MATCH_CAPABILITY")
+        val directory = System.getenv("MATCH_DATA_DIRECTORY")
+        appModule(directory?.let { MatchRepository(java.nio.file.Path.of(it)) }) { id, header ->
+            matchId != null && capability != null && capability.length >= 32 && id == matchId && header == "Bearer $capability"
+        }
     }.start(wait = true)
 }

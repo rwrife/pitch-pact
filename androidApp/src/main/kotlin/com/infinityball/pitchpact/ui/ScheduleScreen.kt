@@ -26,6 +26,14 @@ import java.util.UUID
 /** Native Android scheduling surface; every conflict/round/rollup decision comes from shared. */
 @Composable fun ScheduleScreen(teamStore: RoomTeamStore, schedule: RoomScheduleStore, onBack: () -> Unit) {
     val context = LocalContext.current
+    var scoring by remember { mutableStateOf<String?>(null) }
+    if (scoring != null) {
+        val matchDatabase = remember { com.infinityball.pitchpact.data.PitchPactDatabase.build(context) }
+        DisposableEffect(matchDatabase) { onDispose { matchDatabase.close() } }
+        val matchStore = remember { com.infinityball.pitchpact.data.RoomMatchDayStore(matchDatabase) }
+        MatchDayScreen(scoring!!, matchStore) { scoring = null }
+        return
+    }
     var reminder by remember { mutableStateOf(false) }
     var warning by remember { mutableStateOf("") }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -69,6 +77,7 @@ import java.util.UUID
         if (selectedGame != null) {
             val game = games.firstOrNull { it.id == selectedGame }
             if (game != null) {
+                Button(onClick = { scoring = game.id }) { Text("Score match") }
                 Text("Availability: ${game.title}", style = MaterialTheme.typography.titleMedium)
                 val roster = teamStore.players(game.homeTeamId) + teamStore.players(game.awayTeamId)
                 val responses = remember(revision, selectedGame) { schedule.availability(game.id) }

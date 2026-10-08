@@ -25,7 +25,7 @@ struct PitchPactTests {
         // AppTeamStore.shared is initialized at process start by the app
         // binary; reaching it from the hosted test proves the GRDB stack
         // works inside the app sandbox (current v2 schema migrated).
-        #expect(try AppTeamStore.shared.schemaVersion() == 2)
+        #expect(try AppTeamStore.shared.schemaVersion() == 3)
     }
 
     @Test("shared M2 fixture round-trips through the app store")

@@ -64,6 +64,7 @@ struct ScheduleView: View {
             }
             if let game = fixtures.first(where: { $0.id == selectedFixtureId }) {
                 Section("Availability · \(game.title)") {
+                    NavigationLink("Score match") { MatchDayView(fixtureId: game.id) }
                     let roster = ((try? AppTeamStore.shared.players(teamId: game.homeTeamId)) ?? []) +
                         ((try? AppTeamStore.shared.players(teamId: game.awayTeamId)) ?? [])
                     let responses = (try? AppTeamStore.shared.availability(fixtureId: game.id)) ?? []

@@ -3,7 +3,7 @@ name: CI macOS (iOS)
 # macOS lane: exact Xcode 26.0.1 / 17A400 / iOS SDK 26.0 measurement (missing
 # exact pin = environment blocker, never a silent substitute), pre-build policy
 # greps, xcodebuild TEST on the simulator (drives the KMP embedAndSign loop +
-# M2 hosted unit tests), and post-build Info.plist assertions.
+# hosted unit tests + M4 XCUITest journey), and post-build Info.plist assertions.
 
 on:
   pull_request:
@@ -102,16 +102,15 @@ jobs:
         run: |
           set -euo pipefail
           PBX=iosApp/PitchPact.xcodeproj/project.pbxproj
-          # TARGETED_DEVICE_FAMILY = 1 in EVERY configuration: app + test
-          # targets x project/target x Debug/Release (M2 added the test
-          # target: 6 TOTAL entries, all == 1).
+          # TARGETED_DEVICE_FAMILY = 1 in EVERY configuration: project, app,
+          # hosted unit target and M4 UI target x Debug/Release: 8 entries.
           COUNTS=$(grep -c 'TARGETED_DEVICE_FAMILY = 1;' "$PBX" || true)
           BAD=$(grep -c 'TARGETED_DEVICE_FAMILY' "$PBX" || true)
-          [ "$COUNTS" = "6" ] && [ "$BAD" = "6" ] || { echo "device-family pin wrong: $COUNTS/$BAD"; exit 1; }
-          # bundle prefix everywhere it appears (app x2 configs + test x2)
+          [ "$COUNTS" = "8" ] && [ "$BAD" = "8" ] || { echo "device-family pin wrong: $COUNTS/$BAD"; exit 1; }
+          # Bundle prefix everywhere: app, unit and UI targets x two configs.
           grep -q 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.pitchpact;' "$PBX"
-          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball' "$PBX" || true)" = "4" ]
-          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' "$PBX" || true)" = "4" ]
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER = com.infinityball' "$PBX" || true)" = "6" ]
+          [ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' "$PBX" || true)" = "6" ]
           # no forbidden cross-platform UI frameworks anywhere in iOS sources/project
           if grep -rniE '\bflutter\b|react[ -]?native|\bexpo\b|\bunity\b|\bmaui\b|org\.jetbrains\.compose|import SwiftUICompose' iosApp/; then
             echo "forbidden cross-platform UI reference found"; exit 1
@@ -127,7 +126,7 @@ jobs:
           key: gradle-macos-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-macos-
 
-      - name: xcodebuild test (KMP embedAndSign + M2 hosted unit tests)
+      - name: xcodebuild test (KMP embedAndSign + hosted unit tests + M4 XCUITest journey)
         run: |
           set -euo pipefail
           cd iosApp

@@ -111,3 +111,35 @@ Feature claims (broadcast, registry, consensus product UX, distribution) are int
 ## License
 
 MIT — see LICENSE.
+
+## M4 current behavior (working branch)
+
+Fixture details open native match-day capture on both platforms. The shared engine
+owns the glance clock, goal types, penalty misses, substitutions, cards, optional
+extras, tail undo, appended corrections and score projections. **OFFICIAL** counts
+opposing-side accepted decisions only; the separately labeled pending score is a
+proposal. M4 has no acceptance controls (M7), broadcast or spectator service.
+
+Room schema v3 and GRDB migration v3 atomically store one shared snapshot containing
+the full ledger, durable queue, clock anchors and extra preferences. Same-boot
+restart uses monotonic time. Reboot uses forward epoch/boot correlation; uncertain
+or backward correlation surfaces a recovery message and preserves the checkpoint
+until the scorer confirms elapsed seconds. Clock phases advance explicitly,
+including optional first-half stoppage. UI calls shared logic on the main thread.
+
+Sync is explicit: enter a configured HTTPS endpoint and match capability, then
+choose **Sync queued events**. A failed/mismatched response retains the queue.
+Attempted events require corrections instead of undo, including after a lost ack.
+The local Ktor transport requires a match-specific bearer capability, rejects
+conflicting duplicate IDs and returns exact verified event receipts after durable
+atomic file persistence (private directory/file modes, fsync and atomic rename).
+Configure `MATCH_ID`, `MATCH_CAPABILITY` (at least 32 characters),
+`MATCH_DATA_DIRECTORY` and `PORT` in the server runtime; these are configuration
+names, not shipped credentials. Run behind your own HTTPS endpoint. No public
+hosting or App Store distribution is claimed. Only match facts enter this wire
+contract; private rosters, contacts and availability stay local.
+
+Linux Docker checks cover shared rules, Room/Robolectric capture/restart, Ktor
+replay/auth/conflict/rollback and Swift GRDB persistence. The XCUITest launch and
+capture/restart/undo journey is wired into the existing exact-pin macOS lane;
+its actual native execution remains pending parent CI.

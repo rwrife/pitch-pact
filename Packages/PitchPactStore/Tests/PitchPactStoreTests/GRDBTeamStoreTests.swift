@@ -18,7 +18,7 @@ struct GRDBTeamStoreTests {
 
     @Test("schema is version one")
     func schemaIsVersionOne() throws {
-        #expect(try makeStore().schemaVersion() == 2)
+        #expect(try makeStore().schemaVersion() == 3)
     }
 
     @Test("round-trips the shared cross-platform fixture")
@@ -177,6 +177,6 @@ struct GRDBTeamStoreTests {
     @Test("v1 and v2 migrations are recorded")
     func migrationRecorded() throws {
         let store = try makeStore()
-        #expect(try store.schemaVersion() == 2)
+        #expect(try store.schemaVersion() == 3)
     }
 }

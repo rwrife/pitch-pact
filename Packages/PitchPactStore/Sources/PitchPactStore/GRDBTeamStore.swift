@@ -155,6 +155,12 @@ public enum PitchPactMigrations {
                 t.primaryKey(["fixture_id", "player_id"])
             }
         }
+        migrator.registerMigration("v3-match-day") { db in
+            try db.create(table: "match_day") { t in
+                t.column("id", .text).primaryKey()
+                t.column("payload", .text).notNull()
+            }
+        }
         return migrator
     }
 }
@@ -189,6 +195,7 @@ public final class GRDBTeamStore {
             var version = 0
             if applied.contains(PitchPactMigrations.v1Teams) { version = 1 }
             if applied.contains(PitchPactMigrations.v2Schedule) { version = 2 }
+            if applied.contains("v3-match-day") { version = 3 }
             return version
         }
     }

@@ -59,7 +59,7 @@ class RoomTeamStoreTest {
 
     @Test
     fun schemaIsVersionOne() {
-        assertEquals(2L, store.schemaVersion())
+        assertEquals(3L, store.schemaVersion())
     }
 
     @Test

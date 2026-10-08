@@ -89,6 +89,8 @@ dependencies {
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
 
+    // Offline Room restart -> durable server replay integration; no production dependency.
+    testImplementation(project(":server"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.robolectric)
