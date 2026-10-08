@@ -143,36 +143,42 @@ data class OfficialScore(
 object ConsensusScoring {
     /**
      * Derive the official score from accepted changes over the ledger.
-     * ADD adds one goal to the change-submitter's side, REMOVE subtracts one.
-     * (M1 keeps the arithmetic minimal but real; richer goal-type/own-goal
-     * accounting lands with the match-day engine.)
+     * Own goals belong to the opposing beneficiary. Accepted corrections replace
+     * accepted goals; pending corrections never alter the official projection.
      */
     fun officialScore(
         ledger: MatchLedger,
         changes: List<ConsensusRecord>,
     ): OfficialScore {
-        val effectiveIds = ledger.effectiveEvents()
-            .filterIsInstance<LedgerEvent.Event>()
-            .map { it.eventId }
-            .toSet()
-        var home = 0
-        var away = 0
-        for (record in changes) {
-            if (record.state != ConsensusState.ACCEPTED) continue
-            val ev = ledger.events.filterIsInstance<LedgerEvent.Event>()
-                .firstOrNull { it.eventId == record.change.ledgerEventId }
-                ?: continue
-            if (ev.eventId !in effectiveIds) continue // superseded by a correction
-            val delta = when (record.change.action) {
-                ScoreChangeAction.ADD -> 1
-                ScoreChangeAction.REMOVE -> -1
-                ScoreChangeAction.CORRECT -> continue // corrections carry their own add/remove
+        val acceptedGoals = linkedMapOf<String, EventPayload.Goal?>()
+        val accepted = changes.filter { it.state == ConsensusState.ACCEPTED }
+        // Replacement IDs retain their original ancestry even when an intermediate
+        // correction is pending or rejected. Only accepted payloads are projected.
+        val roots = mutableMapOf<String, String>()
+        for (row in ledger.events) {
+            val root = when (row) {
+                is LedgerEvent.Event -> row.eventId
+                is LedgerEvent.Correction -> roots.getValue(row.correctsEventId).also {
+                    roots[row.replacement.eventId] = it
+                }
             }
-            when (record.change.submittedBy) {
-                Side.HOME -> home += delta
-                Side.AWAY -> away += delta
+            roots[row.eventId] = root
+            val records = accepted.filter { it.change.ledgerEventId == row.eventId }
+            records.forEach { require(row.side == it.change.submittedBy) }
+            val actions = records.map { it.change.action }.toSet()
+            if (ScoreChangeAction.ADD in actions && row is LedgerEvent.Event) {
+                val goal = row.payload as? EventPayload.Goal
+                if (goal != null) acceptedGoals[root] = goal
             }
+            if (ScoreChangeAction.CORRECT in actions && row is LedgerEvent.Correction && acceptedGoals.containsKey(root)) {
+                acceptedGoals[root] = row.replacement.payload as? EventPayload.Goal
+            }
+            // Multiple decisions for the same row are idempotent; accepted removal
+            // wins over an accepted addition without relying on arrival order.
+            if (ScoreChangeAction.REMOVE in actions) acceptedGoals.remove(root)
         }
+        val home = acceptedGoals.values.filterNotNull().count { beneficiary(it) == Side.HOME }
+        val away = acceptedGoals.values.filterNotNull().count { beneficiary(it) == Side.AWAY }
         return OfficialScore(home.coerceAtLeast(0), away.coerceAtLeast(0))
     }
 }

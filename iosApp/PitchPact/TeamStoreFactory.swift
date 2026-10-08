@@ -22,10 +22,9 @@ enum TeamStoreFactory {
             )
             return try GRDBTeamStore(url: dir.appendingPathComponent("pitchpact.db"))
         } catch {
-            // A failed store is fatal for the app UX, but never silent: log
-            // and fall back to memory so the UI still boots for diagnosis.
-            NSLog("PitchPact: store open failed (\(error)); falling back to in-memory")
-            return try! GRDBTeamStore(inMemory: true)
+            // Never make successful-looking scoring writes to a volatile fallback.
+            // Preserve the database for recovery and stop startup visibly.
+            fatalError("PitchPact durable store unavailable: \(error)")
         }
     }
 }

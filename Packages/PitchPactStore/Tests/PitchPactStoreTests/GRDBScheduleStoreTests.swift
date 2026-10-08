@@ -6,7 +6,7 @@ import Testing
 struct GRDBScheduleStoreTests {
     @Test func fixturesAndRsvpPersistAndCascade() throws {
         let store = try GRDBTeamStore(inMemory: true)
-        #expect(try store.schemaVersion() == 2)
+        #expect(try store.schemaVersion() == 3)
         try store.saveTeam(Team(id: "a", name: "Falcons", createdAtEpochMillis: 1))
         try store.saveTeam(Team(id: "b", name: "Comets", createdAtEpochMillis: 1))
         try store.savePlayer(Player(id: "p", teamId: "a", name: "Jo", jerseyNumber: 7, createdAtEpochMillis: 1))

@@ -38,6 +38,9 @@
                ReferencedContainer = "container:PitchPact.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference skipped="NO">
+            <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="UI0000000000000000000004" BuildableName="PitchPactUITests.xctest" BlueprintName="PitchPactUITests" ReferencedContainer="container:PitchPact.xcodeproj"/>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

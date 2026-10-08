@@ -73,6 +73,14 @@ sealed class EventPayload {
     data class Card(val side: Side, val jerseyNumber: Int?, val color: CardColor) : EventPayload()
 
     @Serializable
+    @SerialName("penalty_miss")
+    data class PenaltyMiss(val side: Side, val jerseyNumber: Int) : EventPayload()
+
+    @Serializable
+    @SerialName("extra")
+    data class Extra(val side: Side, val kind: ExtraKind) : EventPayload()
+
+    @Serializable
     @SerialName("substitution")
     data class Substitution(
         val side: Side,
@@ -121,14 +129,13 @@ sealed class LedgerEvent {
 
 /**
  * In-memory projection of an append-only ledger. Construction/replay is
- * idempotent: replaying the same event ids in any interleaving yields the same
- * [events] sequence and the same [effectiveEvents] scoreboard view.
+ * idempotent for duplicate replay. New rows preserve their supplied order;
+ * conflicting content and invalid correction order are rejected explicitly.
  *
  * Single-threaded by contract: instances are only touched from the UI thread /
  * explicit calls (Kotlin/Native thread-safety rule for this repo).
  */
 class MatchLedger {
-    private val appendedIds = mutableSetOf<String>()
     private val _events = mutableListOf<LedgerEvent>()
 
     /** Every appended row, in first-seen order, including corrected originals. */
@@ -139,7 +146,18 @@ class MatchLedger {
      * (`eventId`) was already present (replay → no-op).
      */
     fun append(event: LedgerEvent): Boolean {
-        if (!appendedIds.add(event.eventId)) return false
+        validate(event)
+        _events.firstOrNull { it.eventId == event.eventId }?.let {
+            require(it == event) { "Duplicate event ID has different content" }
+            return false
+        }
+        require(_events.filterIsInstance<LedgerEvent.Correction>().none { it.replacement.eventId == event.eventId }) { "Event ID collides with a correction replacement" }
+        if (event is LedgerEvent.Correction) {
+            require(effectiveEvents().any { it.eventId == event.correctsEventId && it.side == event.side }) { "Missing correction target or side mismatch" }
+            require(event.replacement.side == event.side)
+            require(event.replacement.eventId != event.eventId)
+            require(_events.none { it.eventId == event.replacement.eventId || (it is LedgerEvent.Correction && it.replacement.eventId == event.replacement.eventId) }) { "Replacement ID already exists" }
+        }
         _events += event
         return true
     }
@@ -155,13 +173,33 @@ class MatchLedger {
      * replaced by their replacements). The full [events] ledger is untouched.
      */
     fun effectiveEvents(): List<LedgerEvent> {
-        val correctionsByTarget = _events.filterIsInstance<LedgerEvent.Correction>()
-            .associate { it.correctsEventId to it.replacement }
-        return _events.mapNotNull { ev ->
-            when (ev) {
-                is LedgerEvent.Correction -> null
-                is LedgerEvent.Event -> correctionsByTarget[ev.eventId] ?: ev
+        val effective = linkedMapOf<String, LedgerEvent.Event>()
+        for (event in _events) when (event) {
+            is LedgerEvent.Event -> effective[event.eventId] = event
+            is LedgerEvent.Correction -> {
+                effective.remove(event.correctsEventId)
+                effective[event.replacement.eventId] = event.replacement
             }
         }
+        return effective.values.toList()
+    }
+}
+
+private fun validate(event: LedgerEvent) {
+    require(event.eventId.isNotBlank() && event.recordedAtEpochMillis >= 0)
+    if (event is LedgerEvent.Correction) {
+        require(event.correctsEventId.isNotBlank() && event.correctsEventId != event.eventId)
+        validate(event.replacement)
+        return
+    }
+    val e = event as LedgerEvent.Event
+    fun jersey(n: Int?) { require(n == null || n >= 0) }
+    when (val p = e.payload) {
+        is EventPayload.Clock -> require(p.elapsedSeconds >= 0)
+        is EventPayload.Goal -> { require(p.side == e.side); jersey(p.jerseyNumber); jersey(p.assistJerseyNumber) }
+        is EventPayload.Card -> { require(p.side == e.side); jersey(p.jerseyNumber) }
+        is EventPayload.Substitution -> { require(p.side == e.side); jersey(p.offJerseyNumber); jersey(p.onJerseyNumber); require(p.offJerseyNumber != p.onJerseyNumber) }
+        is EventPayload.PenaltyMiss -> { require(p.side == e.side); jersey(p.jerseyNumber) }
+        is EventPayload.Extra -> require(p.side == e.side)
     }
 }
