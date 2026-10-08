@@ -16,6 +16,8 @@ final class MatchDayJourney: XCTestCase {
         XCTAssertEqual(app.staticTexts["pendingScore"].label, "Pending score 1-0")
         for _ in 0..<4 where !app.buttons["Undo uncommitted tail"].isHittable { app.swipeUp() }
         app.buttons["Undo uncommitted tail"].tap()
+        for _ in 0..<4 where !app.staticTexts["pendingScore"].exists { app.swipeDown() }
+        XCTAssertTrue(app.staticTexts["pendingScore"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.staticTexts["pendingScore"].label, "Pending score 0-0")
     }
 }
