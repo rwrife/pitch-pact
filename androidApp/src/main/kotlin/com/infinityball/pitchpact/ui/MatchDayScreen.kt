@@ -11,13 +11,14 @@ import androidx.compose.ui.unit.dp
 import com.infinityball.pitchpact.MatchDayFacade
 import com.infinityball.pitchpact.data.*
 import com.infinityball.pitchpact.domain.*
+import com.infinityball.pitchpact.dto.PitchPactJson
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.util.UUID
 
-@Composable fun MatchDayScreen(id: String, store: RoomMatchDayStore, onBack: () -> Unit) {
+@Composable fun MatchDayScreen(id: String, store: RoomMatchDayStore, home: String = "Home", away: String = "Away", onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var endpoint by remember { mutableStateOf("") }
     var capability by remember { mutableStateOf("") }
@@ -77,6 +78,12 @@ import java.util.UUID
         }
         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Server endpoint (HTTPS)") })
         OutlinedTextField(capability, { capability = it }, label = { Text("Match capability") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+        BroadcastControls(id, home, away, endpoint, capability, boot, snapshot = {
+            val prepared = MatchDayCodec.decode(rules.prepareSync(json))
+            store.save(prepared); json = MatchDayCodec.encode(prepared); json
+        })
+        Text("Broadcast submissions are retained; append corrections instead of undoing published events.")
+        Button(onClick = { change { rules.prepareSync(json) } }) { Text("Retain captured events before sharing") }
         Button(enabled = !syncing, onClick = {
             syncing = true
             val snapshot = try {
