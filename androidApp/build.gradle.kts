@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
 
@@ -85,6 +86,7 @@ dependencies {
     // RoomTeamStore serializes equipment lists with kotlinx-serialization;
     // :shared does NOT expose the JSON artifact transitively.
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.zxing.core)
 
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)

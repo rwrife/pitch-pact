@@ -94,6 +94,19 @@ class BroadcastTest {
         } finally { dir.toFile().deleteRecursively() }
     }
 
+    @Test fun stopReplayIsIdempotentAndStillRequiresThePrivateKey() {
+        val dir = Files.createTempDirectory("broadcast-stop")
+        try {
+            var repo = BroadcastRepository(dir)
+            val start = repo.create(BroadcastCreate("match", "Home", "Away", idempotencyKey = "stop-replay-create"))
+            repo.stop(start.spectatorCode, start.broadcastSessionKey)
+            repo = BroadcastRepository(dir)
+            repo.stop(start.spectatorCode, start.broadcastSessionKey)
+            assertFailsWith<UnauthorizedBroadcast> { repo.stop(start.spectatorCode, "wrong-key") }
+            assertFailsWith<MissingBroadcast> { repo.spectate(start.spectatorCode) }
+        } finally { dir.toFile().deleteRecursively() }
+    }
+
     @Test fun fullTimeGraceRotationAndRateLimits() {
         val dir = Files.createTempDirectory("broadcast-policy")
         var now = 1_000_000L

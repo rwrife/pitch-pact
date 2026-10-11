@@ -108,7 +108,12 @@ class BroadcastRepository(private val directory: Path, private val now: () -> Lo
             started = previous.started.copy(expiresAt = expires)))
         return ack
     }
-    @Synchronized fun stop(code: String, key: String?) { save(authorized(code, key).copy(stopped = true)) }
+    @Synchronized fun stop(code: String, key: String?) {
+        val record = records[code] ?: throw MissingBroadcast()
+        if (record.started.expiresAt <= now()) throw MissingBroadcast()
+        if (key == null || !MessageDigest.isEqual(key.toByteArray(), record.started.broadcastSessionKey.toByteArray())) throw UnauthorizedBroadcast()
+        if (!record.stopped) save(record.copy(stopped = true))
+    }
     @Synchronized fun rotate(code: String, key: String?): BroadcastStarted {
         val previous = authorized(code, key)
         val started = previous.started.copy(broadcastSessionKey = "BSK-" + token(48, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"))
