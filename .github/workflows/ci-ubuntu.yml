@@ -91,6 +91,33 @@ jobs:
           path: '**/build/test-results/**'
           if-no-files-found: warn
 
+  docker-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build server container image
+        run: docker build -f server/Dockerfile -t pitchpact-server:test .
+
+      - name: Smoke test container health and spectator routes
+        run: |
+          set -euo pipefail
+          DATA_DIR=$(mktemp -d)
+          CID=$(docker run -d -p 127.0.0.1:18080:8080 -v "$DATA_DIR:/data/broadcasts" -e BROADCAST_DATA_DIRECTORY=/data/broadcasts pitchpact-server:test)
+          trap 'docker stop "$CID" || true; rm -rf "$DATA_DIR"' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18080/healthz | grep -q '"status":"ok"'; then
+              echo "Server container healthy on attempt $attempt"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/ | grep -q "Watch a match"
+          echo "Container root and health routes OK"
+
+
   swift-store:
     # Real-SQLite evidence for the iOS store package on Linux. The macOS
     # lane is the ONLY iOS build/device evidence; this job proves logic.

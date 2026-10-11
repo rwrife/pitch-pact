@@ -31,7 +31,10 @@ import java.util.UUID
         val matchDatabase = remember { com.infinityball.pitchpact.data.PitchPactDatabase.build(context) }
         DisposableEffect(matchDatabase) { onDispose { matchDatabase.close() } }
         val matchStore = remember { com.infinityball.pitchpact.data.RoomMatchDayStore(matchDatabase) }
-        MatchDayScreen(scoring!!, matchStore) { scoring = null }
+        val fixture = schedule.fixtures().firstOrNull { it.id == scoring }
+        val homeName = teamStore.teams().firstOrNull { it.id == fixture?.homeTeamId }?.name ?: "Home"
+        val awayName = teamStore.teams().firstOrNull { it.id == fixture?.awayTeamId }?.name ?: "Away"
+        MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName) { scoring = null }
         return
     }
     var reminder by remember { mutableStateOf(false) }

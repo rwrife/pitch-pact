@@ -15,6 +15,7 @@ import com.infinityball.pitchpact.ui.ScheduleScreen
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import com.infinityball.pitchpact.ui.TeamDirectoryScreen
 import com.infinityball.pitchpact.ui.TeamDetailScreen
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +46,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
     var showSchedule by remember { mutableStateOf(false) }
+    var showSpectator by remember { mutableStateOf(false) }
     var selectedTeamId by remember { mutableStateOf<String?>(null) }
+    if (showSpectator) {
+        com.infinityball.pitchpact.ui.SpectatorScreen(onBack = { showSpectator = false })
+        return
+    }
     if (showSchedule) {
         ScheduleScreen(store, schedule, onBack = { showSchedule = false })
         return
@@ -53,7 +59,10 @@ private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
     val team = selectedTeamId?.let { id -> store.team(id) }
     if (team == null) {
         Column {
-            TextButton(onClick = { showSchedule = true }) { Text("Games & tournaments") }
+            Row {
+                TextButton(onClick = { showSchedule = true }) { Text("Games & tournaments") }
+                TextButton(onClick = { showSpectator = true }) { Text("Watch live game") }
+            }
             TeamDirectoryScreen(
                 store = store,
                 schedule = schedule,

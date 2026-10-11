@@ -5,6 +5,8 @@ import PitchPactStore
 
 @MainActor struct MatchDayView: View {
     let fixtureId: String
+    var homeTeam = "Home"
+    var awayTeam = "Away"
     @State private var json = ""
     @State private var side = "HOME"
     @State private var kind = "OPEN_PLAY"
@@ -85,6 +87,12 @@ import PitchPactStore
                     SecureField("Match capability", text: $capability)
                     Button("Sync queued events") { Task { await sync() } }.disabled(syncing).frame(minHeight: 44)
                 }
+                BroadcastControls(matchId: fixtureId, home: homeTeam, away: awayTeam, endpoint: endpoint, capability: capability, snapshot: {
+                    let prepared = try rules.prepareSync(json: json)
+                    try AppTeamStore.shared.saveMatchDay(id: fixtureId, sharedJSON: prepared)
+                    json = prepared
+                    return prepared
+                }, sample: { (uptime, epoch, boot) })
                 Section("Audit ledger") { Text((try? rules.audit(json: json)) ?? "Ledger requires recovery").font(.caption).textSelection(.enabled) }
             }
             Text(error)

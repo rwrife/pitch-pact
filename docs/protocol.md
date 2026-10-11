@@ -35,8 +35,12 @@ GET   /v0/spectate/:code       (no auth)
   → { homeTeam, awayTeam, clock, officialScore, pendingChanges, events[] }
 ```
 
-Field policy `number-only` strips player names from every broadcast payload (server-side too).
-Broadcasts expire at full time + 60 min grace. Spectator reads are rate-limited per code per IP.
+- Field policy `number-only` strips player names from every broadcast payload (server-side too).
+- In M5, broadcast payloads transmit match facts (clock, events, officialScore, and labeled pendingChanges). Official score derives solely from accepted consensus decisions (arriving in M7); until accepted, captured goals remain pending and official score stays 0–0.
+- Spectators are completely anonymous: no account, no token, read-only. No write path exists from spectator endpoints.
+- Broadcasts expire at full time + 60 min grace (or 24 hr default). Stopped broadcasts immediately refuse spectators.
+- Spectator reads are rate-limited per code per IP (120 req/min). Broadcast updates are rate-limited per key (120 req/min).
+
 
 ## 4. Consensus scoring
 

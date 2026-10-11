@@ -1,0 +1,14 @@
+.git
+.gradle*
+.kotlin
+.android
+.m2
+.swift*
+**/build
+**/.build
+**/.cache
+**/.swiftpm
+local.properties
+*.jks
+*.keystore
+*.p8
