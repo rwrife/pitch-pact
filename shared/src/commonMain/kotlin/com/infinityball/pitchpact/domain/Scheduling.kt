@@ -1,5 +1,6 @@
 package com.infinityball.pitchpact.domain
 
+import com.infinityball.pitchpact.dto.CoordinatedFixture
 import kotlinx.serialization.Serializable
 
 /** Local scheduling data. No roster or availability model belongs in a public DTO. */
@@ -14,6 +15,8 @@ import kotlinx.serialization.Serializable
     val resultStatus: ResultStatus = ResultStatus.UNSCORED,
     val officialHome: Int? = null, val officialAway: Int? = null,
     val reminderMinutesBefore: Int? = null,
+    val coordinatedLinkId: String? = null,
+    val coordinatedRevision: Int? = null,
 )
 @Serializable enum class Availability { YES, NO, MAYBE }
 /** PRIVATE: must not be included in broadcast/registry payloads. */
@@ -43,6 +46,18 @@ object Scheduling {
                 previous.resultStatus != next.resultStatus || previous.officialHome != next.officialHome ||
                 previous.officialAway != next.officialAway)) {
             throw ValidationException("fixture.result.locked", "Scored fixture teams and results cannot be changed by scheduling")
+        }
+        // Coordinated provenance: a fixture that came from the two-team handshake is
+        // owned by the consensus loop. Local edits must go through a server-side
+        // revision + both-side re-confirm (sync re-applies it), never a silent overwrite.
+        if (previous?.coordinatedLinkId != null &&
+            (previous.title != next.title || previous.startEpochMillis != next.startEpochMillis ||
+                previous.durationMinutes != next.durationMinutes || previous.locationId != next.locationId ||
+                previous.homeTeamId != next.homeTeamId || previous.awayTeamId != next.awayTeamId ||
+                previous.tournamentId != next.tournamentId || previous.round != next.round ||
+                previous.coordinatedLinkId != next.coordinatedLinkId ||
+                previous.coordinatedRevision != next.coordinatedRevision)) {
+            throw ValidationException("fixture.coordinated.locked", "Coordinated fixture — change it via re-confirm with the other team")
         }
     }
 

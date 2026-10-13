@@ -90,10 +90,10 @@ This is a youth-sports product; the privacy posture is strict by design.
 
 1. M1: KMP `shared` domain core + project skeletons + CI gates — **merged** (shared ledger + consensus state machine + v0 DTO envelope, iOS/Android/server targets, dual CI lanes)
 2. M2: Team/roster/uniform UX on iOS and Android — **merged** (shared entities + validation, GRDB v1 + SwiftUI CRUD, Room v1 + Compose CRUD, private guardian-contact serialization gate; evidence: [docs/m2-evidence.md](docs/m2-evidence.md))
-3. M3: Tournaments, scheduling, reminders, availability — **in review** (shared deterministic scheduling rules, private RSVP storage, local reminders, dual native UX; exact-head native CI pending)
-4. M4: Match-day scoring engine + play-by-play UX (offline-first)
-5. M5: Hosted broadcast service + spectator read-only experience
-6. M6: Global team registry, team codes, cross-team fixture coordination
+3. M3: Tournaments, scheduling, reminders, availability — **merged** (shared deterministic scheduling rules, private RSVP storage, local reminders, dual native UX)
+4. M4: Match-day scoring engine + play-by-play UX (offline-first) — **merged** (shared clock + append-only ledger, offline queue with idempotent resync, both native match-day UXs)
+5. M5: Hosted broadcast service + spectator read-only experience — **merged** (short-code anonymous spectator read, number-only field policy, self-hostable server; public deployment remains operator-owned)
+6. M6: Global team registry, team codes, cross-team fixture coordination — **in review** (opt-in listing, rotatable team codes, link handshake, both-side fixture confirm; evidence: [docs/m6-privacy-review.md](docs/m6-privacy-review.md))
 7. M7: Two-scorer consensus scoring with audit ledger
 8. M8: Backup/export/deletion + app-store/icon assets + TestFlight + Play internal tracks
 

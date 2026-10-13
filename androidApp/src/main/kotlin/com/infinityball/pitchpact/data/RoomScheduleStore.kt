@@ -47,6 +47,9 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
     override fun fixtures() = dao.fixtures().map { json.decodeFromString(Fixture.serializer(), it.payload) }
         .sortedBy { it.startEpochMillis }
     override fun deleteFixture(id: String) = runBlocking {
+        require(fixtures().firstOrNull { it.id == id }?.coordinatedLinkId == null) {
+            "Coordinated fixture — revoke or un-confirm it with the other team instead of deleting locally"
+        }
         db.withTransaction { dao.deleteAvailability(id); dao.deleteFixture(id) }
     }
     override fun saveAvailability(response: AvailabilityResponse) {
@@ -56,5 +59,23 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
     }
     override fun availability(fixtureId: String) = dao.availability(fixtureId).map {
         AvailabilityResponse(it.fixtureId, it.playerId, Availability.valueOf(it.choice))
+    }
+
+    /** Apply only authenticated, coordinated server projections. One transaction, local rows untouched. */
+    fun syncCoordinated(teamId: String, incoming: List<com.infinityball.pitchpact.dto.CoordinatedFixture>) = runBlocking {
+        db.withTransaction {
+            val old = fixtures().filter { it.homeTeamId == teamId || it.awayTeamId == teamId }
+            val merge = com.infinityball.pitchpact.domain.Coordination.mergeSchedule(incoming, teamId, old)
+            val removed = merge.removedFixtureIds.toSet()
+            for (id in removed) { dao.deleteAvailability(id); dao.deleteFixture(id) }
+            for (location in merge.locations)
+                dao.saveLocation(LocationRow(location.id, json.encodeToString(Location.serializer(), location)))
+            for (fixture in merge.fixtures) {
+                val prior = old.firstOrNull { it.id == fixture.id }
+                if (prior == null || com.infinityball.pitchpact.domain.Coordination.shouldSync(prior, fixture)) {
+                    dao.saveFixture(FixtureRow(fixture.id, json.encodeToString(Fixture.serializer(), fixture)))
+                }
+            }
+        }
     }
 }

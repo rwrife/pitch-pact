@@ -18,6 +18,7 @@
 AA00000000000000000000B11 = {isa = PBXBuildFile; fileRef = AA00000000000000000000A12; };
 M50000000000000000000001 = {isa = PBXBuildFile; fileRef = M50000000000000000000002; };
 M50000000000000000000003 = {isa = PBXBuildFile; fileRef = M50000000000000000000004; };
+M60000000000000000000001 = {isa = PBXBuildFile; fileRef = M60000000000000000000002; };
 UI0000000000000000000001 = {isa = PBXBuildFile; fileRef = UI0000000000000000000002; };
 /* End PBXBuildFile section */
 
@@ -43,6 +44,7 @@ UI0000000000000000000001 = {isa = PBXBuildFile; fileRef = UI00000000000000000000
 AA00000000000000000000A12 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchDayView.swift; sourceTree = "<group>"; };
 M50000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BroadcastControls.swift; sourceTree = "<group>"; };
 M50000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectatorView.swift; sourceTree = "<group>"; };
+M60000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryView.swift; sourceTree = "<group>"; };
 UI0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactUITests/MatchDayJourney.swift; sourceTree = "<group>"; };
 UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = PitchPactUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -88,6 +90,7 @@ UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.c
                 AA00000000000000000000A12,
                 M50000000000000000000002,
                 M50000000000000000000004,
+                M60000000000000000000002,
 			);
 			path = PitchPact;
 			sourceTree = "<group>";
@@ -253,6 +256,7 @@ productType = "com.apple.product-type.bundle.ui-testing";
                 AA00000000000000000000B11,
                 M50000000000000000000001,
                 M50000000000000000000003,
+                M60000000000000000000001,
 				AA00000000000000000000B6 /* TeamsView.swift in Sources */,
 				AA00000000000000000000B1 /* PitchPactApp.swift in Sources */,
 				AA00000000000000000000B7 /* TeamDetailView.swift in Sources */,

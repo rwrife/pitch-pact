@@ -17,11 +17,13 @@ import java.nio.file.Path
 fun Application.appModule(
     matchRepository: MatchRepository? = null,
     broadcastRepository: BroadcastRepository? = null,
+    registryRepository: RegistryRepository? = null,
     traffic: BroadcastTraffic = BroadcastTraffic(),
     authorize: (String, String?) -> Boolean = { _, _ -> false },
 ) {
     install(ContentNegotiation) { json(PitchPactJson.codec) }
     routing {
+        if (registryRepository != null) registryRoutes(registryRepository, traffic)
         post("/v0/matches/{id}/events") {
             val id = call.parameters["id"] ?: ""
             if (!authorize(id, call.request.headers["Authorization"])) { call.respond(HttpStatusCode.Forbidden); return@post }
@@ -127,10 +129,12 @@ fun main(args: Array<String>) {
     val port = (System.getenv("PORT") ?: args.getOrNull(0)?.takeIf { it.toIntOrNull() != null } ?: "8080").toInt()
     val directory = System.getenv("MATCH_DATA_DIRECTORY")
     val broadcastDirectory = System.getenv("BROADCAST_DATA_DIRECTORY") ?: "/data/broadcasts"
+    val registryDirectory = System.getenv("REGISTRY_DATA_DIRECTORY") ?: "/data/registry"
     val matchId = System.getenv("MATCH_ID")
     val capability = System.getenv("MATCH_CAPABILITY")
     embeddedServer(Netty, port = port) {
-        appModule(directory?.let { MatchRepository(Path.of(it)) }, BroadcastRepository(Path.of(broadcastDirectory))) { id, header ->
+        appModule(directory?.let { MatchRepository(Path.of(it)) }, BroadcastRepository(Path.of(broadcastDirectory)),
+            RegistryRepository(Path.of(registryDirectory))) { id, header ->
             matchId != null && capability != null && capability.length >= 32 && id == matchId && header == "Bearer $capability"
         }
     }.start(wait = true)

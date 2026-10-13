@@ -51,9 +51,23 @@ extension GRDBTeamStore {
     public func saveFixture(_ fixture: Fixture) throws { try upsert(fixture, id: fixture.id, table: "fixture") }
     public func fixtures() throws -> [Fixture] { try records(Fixture.self, table: "fixture").sorted { $0.startEpochMillis < $1.startEpochMillis } }
     public func deleteFixture(id: String) throws {
+        guard try fixtures().first(where: { $0.id == id })?.coordinatedLinkId == nil else {
+            throw ValidationFailure("fixture.coordinated.locked", "Coordinated fixture — revoke or un-confirm it with the other team instead of deleting locally")
+        }
         try writer.write { db in
             try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [id])
+        }
+    }
+    /// Sync-only path: drops local projections of coordinated fixtures the server no longer confirms.
+    /// Only rows carrying coordinated provenance are removed; local fixtures are never touched.
+    public func removeCoordinatedFixtures(ids: [String]) throws {
+        let coordinated = Set(try fixtures().filter { $0.coordinatedLinkId != nil }.map(\.id))
+        try writer.write { db in
+            for id in ids where coordinated.contains(id) {
+                try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [id])
+                try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [id])
+            }
         }
     }
     public func saveAvailability(_ response: AvailabilityResponse) throws {

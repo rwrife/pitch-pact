@@ -9,3 +9,5 @@ On game day, use the live clock and log goals, cards, substitutions, and extra e
 Managers running their own server can start a private broadcast and share a six-character code. Spectators can read the score, clock snapshot, labeled pending changes, and play-by-play through an app screen or browser page without creating an account. Broadcast updates require connectivity and a configured server; the public hosted service has not been deployed.
 
 For youth privacy, rosters, guardian contacts, and availability are not included in broadcast payloads. Broadcast events use jersey numbers, not player names. Managers control whether to start or stop sharing a match.
+
+Teams can opt in to a registry on a server you run, listing only club name, region, and age group. Share a rotatable team code so another team can request a link; once both sides accept, either side can propose a game with location and uniforms, and it appears in both schedules only after both confirm. Registry use requires your own server; the public hosted service has not been deployed.

@@ -21,6 +21,7 @@ struct TeamsView: View {
     var body: some View {
         List {
             NavigationLink("Games & tournaments") { ScheduleView() }
+            NavigationLink("Find & link teams") { RegistryView() }.accessibilityIdentifier("app.teams.registry")
             NavigationLink("Watch live game") { SpectatorView() }.accessibilityIdentifier("app.teams.watchLive")
             Toggle("Show archived", isOn: $showArchived)
                 .accessibilityIdentifier("app.teams.showArchived")

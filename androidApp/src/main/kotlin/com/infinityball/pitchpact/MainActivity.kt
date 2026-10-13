@@ -47,7 +47,12 @@ class MainActivity : ComponentActivity() {
 private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
     var showSchedule by remember { mutableStateOf(false) }
     var showSpectator by remember { mutableStateOf(false) }
+    var showRegistry by remember { mutableStateOf(false) }
     var selectedTeamId by remember { mutableStateOf<String?>(null) }
+    if (showRegistry) {
+        com.infinityball.pitchpact.ui.RegistryScreen(store = store, schedule = schedule, onBack = { showRegistry = false })
+        return
+    }
     if (showSpectator) {
         com.infinityball.pitchpact.ui.SpectatorScreen(onBack = { showSpectator = false })
         return
@@ -61,6 +66,7 @@ private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
         Column {
             Row {
                 TextButton(onClick = { showSchedule = true }) { Text("Games & tournaments") }
+                TextButton(onClick = { showRegistry = true }) { Text("Find & link teams") }
                 TextButton(onClick = { showSpectator = true }) { Text("Watch live game") }
             }
             TeamDirectoryScreen(
