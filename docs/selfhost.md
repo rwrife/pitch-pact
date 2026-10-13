@@ -12,6 +12,7 @@ docker build -f server/Dockerfile -t pitchpact-server .
 docker run -d --name pitchpact -p 127.0.0.1:8080:8080 \
   -v pitchpact-data:/data \
   -e BROADCAST_DATA_DIRECTORY=/data/broadcasts \
+  -e REGISTRY_DATA_DIRECTORY=/data/registry \
   -e MATCH_DATA_DIRECTORY=/data/matches \
   -e MATCH_ID=your-fixture-id \
   --env-file /secure/path/pitchpact.env \
@@ -20,9 +21,10 @@ docker run -d --name pitchpact -p 127.0.0.1:8080:8080 \
 
 The protected environment file supplies a random `MATCH_CAPABILITY` of at least
 32 characters. Never commit this file, log the key, or put it in spectator links.
-The current operator gate scopes creation and match sync to `MATCH_ID`; multi-team
-registry authentication belongs to M6/M7. The broadcast session key authorizes
-updates/stop/rotation only for its broadcast. Spectator codes grant read only.
+The operator gate scopes match sync to `MATCH_ID`. Registry authentication uses
+per-team owner capability keys and rotatable team codes (protocol §5). The broadcast
+session key authorizes updates/stop/rotation only for its broadcast. Spectator codes
+grant read only.
 
 The current persistence is private atomic JSON files, not SQLite/Postgres. Use one
 server process per volume. Files and directories have owner-only permissions;
