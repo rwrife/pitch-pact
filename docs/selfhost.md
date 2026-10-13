@@ -73,5 +73,6 @@ headers. Limit request bodies at the proxy to 1 MiB and redact Authorization, pa
 containing private keys, and request/response bodies from logs.
 
 Create: 20/minute per peer; reads: 120/minute per code/peer; writes: 120/minute per
-key. Spectator endpoints have no mutation route. Registry/team cascade deletion,
-public deployment, and production TLS evidence remain separate milestones.
+key. Spectator endpoints have no mutation route. Registry creation is limited to 20/minute per peer and search to 120/minute. Deleting a
+registry team (`DELETE /v0/registry/teams/{id}`) cascades to its links, requests and
+fixtures. Public deployment and production TLS evidence remain separate milestones.
