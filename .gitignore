@@ -39,3 +39,6 @@ __pycache__/
 # Env & secrets
 .env
 !.env.example
+# Local test caches
+.build-m6/
+.swift-home/

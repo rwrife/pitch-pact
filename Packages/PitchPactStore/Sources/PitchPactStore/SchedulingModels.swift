@@ -17,15 +17,18 @@ public struct Fixture: Codable, Identifiable, Sendable {
     public var startEpochMillis: Int64; public var durationMinutes: Int; public var locationId: String?
     public var tournamentId: String?; public var round: Int?; public var resultStatus: ResultStatus
     public var officialHome: Int?; public var officialAway: Int?; public var reminderMinutesBefore: Int?
+    public var coordinatedLinkId: String?; public var coordinatedRevision: Int?
     public init(id: String, title: String, homeTeamId: String, awayTeamId: String,
                 startEpochMillis: Int64, durationMinutes: Int = 90, locationId: String? = nil,
                 tournamentId: String? = nil, round: Int? = nil, resultStatus: ResultStatus = .UNSCORED,
-                officialHome: Int? = nil, officialAway: Int? = nil, reminderMinutesBefore: Int? = nil) {
+                officialHome: Int? = nil, officialAway: Int? = nil, reminderMinutesBefore: Int? = nil,
+                coordinatedLinkId: String? = nil, coordinatedRevision: Int? = nil) {
         self.id = id; self.title = title; self.homeTeamId = homeTeamId; self.awayTeamId = awayTeamId
         self.startEpochMillis = startEpochMillis; self.durationMinutes = durationMinutes
         self.locationId = locationId; self.tournamentId = tournamentId; self.round = round
         self.resultStatus = resultStatus; self.officialHome = officialHome; self.officialAway = officialAway
         self.reminderMinutesBefore = reminderMinutesBefore
+        self.coordinatedLinkId = coordinatedLinkId; self.coordinatedRevision = coordinatedRevision
     }
 }
 public enum Availability: String, Codable, CaseIterable, Sendable { case YES, NO, MAYBE }

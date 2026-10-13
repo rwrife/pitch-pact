@@ -34,3 +34,28 @@ struct GRDBScheduleStoreTests {
         #expect(decoded.pendingFixtures == 2)
     }
 }
+
+@Suite("M6 coordinated fixtures")
+struct CoordinatedFixtureStoreTests {
+    @Test("coordinated provenance round-trips and blocks local delete")
+    func provenanceAndDeleteGuard() throws {
+        let store = try GRDBTeamStore(inMemory: true)
+        let game = Fixture(id: "coordinated:f1", title: "Shared match", homeTeamId: "a", awayTeamId: "b",
+                           startEpochMillis: 1, coordinatedLinkId: "LNK-1", coordinatedRevision: 2)
+        try store.saveFixture(game)
+        let loaded = try #require(try store.fixtures().first)
+        #expect(loaded.coordinatedLinkId == "LNK-1" && loaded.coordinatedRevision == 2)
+        #expect(throws: ValidationFailure.self) { try store.deleteFixture(id: "coordinated:f1") }
+        #expect(try store.fixtures().count == 1)
+    }
+
+    @Test("sync removal drops only coordinated projections")
+    func syncRemovalScope() throws {
+        let store = try GRDBTeamStore(inMemory: true)
+        try store.saveFixture(Fixture(id: "coordinated:f1", title: "Shared", homeTeamId: "a", awayTeamId: "b",
+                                      startEpochMillis: 1, coordinatedLinkId: "LNK-1", coordinatedRevision: 1))
+        try store.saveFixture(Fixture(id: "local-1", title: "Scrimmage", homeTeamId: "a", awayTeamId: "c", startEpochMillis: 2))
+        try store.removeCoordinatedFixtures(ids: ["coordinated:f1", "local-1"])
+        #expect(try store.fixtures().map(\.id) == ["local-1"])
+    }
+}
