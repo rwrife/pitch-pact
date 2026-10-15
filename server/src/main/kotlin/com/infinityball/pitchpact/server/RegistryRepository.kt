@@ -1,6 +1,6 @@
 package com.infinityball.pitchpact.server
 
-import com.infinityball.pitchpact.domain.Coordination
+import com.infinityball.pitchpact.domain.*
 import com.infinityball.pitchpact.dto.*
 import kotlinx.serialization.Serializable
 import java.nio.channels.FileChannel
@@ -32,6 +32,11 @@ import java.util.UUID
     val requests: MutableMap<String, LinkRequestRecord> = mutableMapOf(),
     val links: MutableMap<String, LinkRecord> = mutableMapOf(),
     val fixtures: MutableMap<String, FixtureRecord> = mutableMapOf(),
+    /** linkId -> all consensus decisions for that link (every match), append-only. */
+    val consensus: MutableMap<String, MutableList<ConsensusDecision>> = mutableMapOf(),
+    val consensusReceipts: MutableMap<String, String> = mutableMapOf(),
+    /** "$linkId|$matchId" -> sides that blew the final whistle. */
+    val whistles: MutableMap<String, Set<Side>> = mutableMapOf(),
     /** key -> "kind|fingerprint|resultId". Replays with the same fingerprint return the original result. */
     val receipts: MutableMap<String, String> = mutableMapOf(),
 )
@@ -233,12 +238,135 @@ class RegistryRepository(private val directory: Path, private val now: () -> Lon
     @Synchronized fun deleteTeam(teamId: String, key: String) {
         val t = owner(teamId, key)
         val linkIds = state.links.values.filter { it.teamA == teamId || it.teamB == teamId }.map { it.id }.toSet()
+        linkIds.forEach { state.consensus.remove(it) }
+        state.whistles.keys.removeAll { key -> linkIds.any { key.startsWith("$it|") } }
         state.fixtures.values.removeAll { it.linkId in linkIds }
         state.links.keys.removeAll(linkIds)
         state.requests.values.removeAll { it.requesterTeamId == teamId || it.recipientTeamId == teamId }
         state.codeToTeamId.remove(t.teamCode)
         state.teams.remove(teamId)
         state.receipts.clear() // receipts may reference deleted ids; clients re-key on retry
+        state.consensusReceipts.clear()
         persist()
+    }
+
+    // ---- M7 consensus scoring (protocol §4) -----------------------------------------------
+    // Rules live in shared ConsensusBook/ConsensusRecord. This class stores,
+    // authenticates (opposing-side authorization = which party's key signed)
+    // and re-persists atomically. It decides NOTHING itself.
+    /** key -> json response. Fingerprint guards against replayed keys with different bodies. */
+    private fun replayConsensus(key: String, fp: String): String? {
+        require(key.length in 16..128)
+        val stored = state.consensusReceipts[key] ?: return null
+        val parts = stored.split("|", limit = 2)
+        if (parts[0] != fp) throw RegistryConflict()
+        return parts[1]
+    }
+    private fun rememberConsensus(key: String, fp: String, jsonPayload: String) {
+        state.consensusReceipts[key] = "$fp|$jsonPayload"
+    }
+    private fun sideOf(link: LinkRecord, party: String): Side = ConsensusBook.sideOf(listOf(link.teamA, link.teamB), party)
+    private fun requireActive(linkId: String) {
+        if (state.fixtures.values.any { it.linkId == linkId } && state.links[linkId]?.state != "active") throw RegistryForbidden()
+    }
+
+    @Synchronized fun submitConsensus(linkId: String, key: String, submit: ConsensusSubmit): ConsensusDecision {
+        val (link, party) = activeLink(linkId, key)
+        val fp = fingerprint("$linkId|submit|${json.encodeToString(ConsensusSubmit.serializer(), submit.copy(idempotencyKey = ""))}")
+        replayConsensus(submit.idempotencyKey, fp)?.let {
+            return json.decodeFromString(ConsensusDecision.serializer(), it)
+        }
+        val submitter = sideOf(link, party)
+        val matchId = submit.change.matchId
+        require(matchId.isNotBlank())
+        // A match played on this link is either the coordinated fixture id or a
+        // manager-chosen ad-hoc id. It must never collide with another link's
+        // fixtures, and it must be broadcast-safe.
+        require(matchId.matches(Regex("[A-Za-z0-9:_-]{1,128}")))
+        state.fixtures.values.firstOrNull { it.id == matchId }?.let {
+            if (it.linkId != linkId) throw RegistryForbidden()
+        }
+        val current = (state.consensus[linkId] ?: emptyList()).filter { it.change.matchId == matchId }
+        val next = try { ConsensusBook.submit(current, SubmissionRequest(submit.change, submit.event), submitter, now()) }
+            catch (e: IllegalArgumentException) { throw RegistryConflict().also { it.initCause(e) } }
+        val decision = next.first { it.change.changeId == submit.change.changeId }
+        state.consensus[linkId] = ((state.consensus[linkId] ?: emptyList()).filterNot { it.change.matchId == matchId } + next).toMutableList()
+        rememberConsensus(submit.idempotencyKey, fp, json.encodeToString(ConsensusDecision.serializer(), decision))
+        persist()
+        return decision
+    }
+
+    @Synchronized fun reviewConsensus(
+        linkId: String, changeId: String, key: String, action: ConsensusAction, idempotencyKey: String,
+    ): ConsensusDecision {
+        val (link, party) = activeLink(linkId, key)
+        val fp = fingerprint("$linkId|review|$changeId|${action.name}")
+        replayConsensus(idempotencyKey, fp)?.let {
+            return json.decodeFromString(ConsensusDecision.serializer(), it)
+        }
+        val actor = sideOf(link, party)
+        val all = state.consensus[linkId] ?: throw RegistryNotFound()
+        val matchId = all.firstOrNull { it.change.changeId == changeId }?.change?.matchId ?: throw RegistryNotFound()
+        val current = all.filter { it.change.matchId == matchId }
+        val pending = current.firstOrNull { it.change.changeId == changeId && it.state == ConsensusState.PENDING }
+        if (pending != null && action != ConsensusAction.WITHDRAW && pending.change.submittedBy == actor) {
+            // Only the opposing side resolves a change. Wrong capability -> 403.
+            throw RegistryForbidden()
+        }
+        val next = try { ConsensusBook.review(current, changeId, actor, action, now()) }
+            catch (e: IllegalArgumentException) { throw RegistryConflict().also { it.initCause(e) } }
+        val decision = next.first { it.change.changeId == changeId }
+        state.consensus[linkId] = (all.filterNot { it.change.matchId == matchId } + next).toMutableList()
+        rememberConsensus(idempotencyKey, fp, json.encodeToString(ConsensusDecision.serializer(), decision))
+        persist()
+        return decision
+    }
+
+    @Synchronized fun whistle(linkId: String, key: String, whistle: ConsensusWhistle): ConsensusSnapshot {
+        val (link, party) = activeLink(linkId, key)
+        require(whistle.idempotencyKey.length in 16..128)
+        val partySide = sideOf(link, party)
+        require(whistle.side == partySide) { "Whistle side mismatch" }
+        state.whistles["${linkId}|${whistle.matchId}"] =
+            ConsensusBook.whistle(state.whistles["${linkId}|${whistle.matchId}"] ?: emptySet(), partySide)
+        persist()
+        return consensusSnapshot(linkId, whistle.matchId, key)
+    }
+
+    /** Team link ids carry a prefix, so this stays a party-scoped lookup. */
+    @Synchronized fun findLinkForChange(changeId: String): Pair<String, MutableList<ConsensusDecision>> {
+        val linkId = state.consensus.entries.firstOrNull { (_, list) -> list.any { it.change.changeId == changeId } }?.key
+            ?: throw RegistryNotFound()
+        return linkId to state.consensus.getValue(linkId)
+    }
+
+    /** Official scoreboard + pending band for one match on this link, recomputed from the record. */
+    @Synchronized fun consensusSnapshot(linkId: String, matchId: String, key: String): ConsensusSnapshot {
+        activeLink(linkId, key)
+        return publicSnapshot(linkId, matchId) ?: throw RegistryNotFound()
+    }
+
+    /** Verify party capability before allowing a linked broadcast to exist. */
+    @Synchronized fun authorizeBroadcast(linkId: String, matchId: String, key: String): Boolean {
+        return try { activeLink(linkId, key); matchId.matches(Regex("[A-Za-z0-9:_-]{1,128}")) }
+        catch (_: RuntimeException) { false }
+    }
+
+    /** Broadcast read path; never returns a key or private registry fields. */
+    @Synchronized fun publicSnapshot(linkId: String, matchId: String): ConsensusSnapshot? {
+        val link = state.links[linkId] ?: return null
+        if (link.state != "active") return null
+        val list = (state.consensus[linkId] ?: emptyList()).filter { it.change.matchId == matchId }
+        val projection = ConsensusBook.project(list, state.whistles["$linkId|$matchId"] ?: emptySet())
+        val pending = projection.pending.map { PendingChangeView(it.change.changeId, it.change.submittedBy, it.state) }
+        return ConsensusSnapshot(
+            matchId = matchId,
+            events = projection.ledger,
+            decisions = list,
+            officialScore = ScoreboardPayload(matchId, projection.officialScore.home, projection.officialScore.away, pending, projection.ledger),
+            pendingChanges = pending,
+            finalWhistles = projection.finalWhistles,
+            official = projection.official,
+        )
     }
 }

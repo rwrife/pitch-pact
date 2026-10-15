@@ -1,6 +1,7 @@
 package com.infinityball.pitchpact.server
 
 import com.infinityball.pitchpact.dto.*
+import com.infinityball.pitchpact.domain.ConsensusAction
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.origin
@@ -80,5 +81,69 @@ fun Route.registryRoutes(repo: RegistryRepository, traffic: BroadcastTraffic) {
     }
     post("/v0/links/{linkId}/fixtures/{id}/confirm") {
         call.write { key -> call.reply(repo.confirm(call.parameters["linkId"] ?: "", call.parameters["id"] ?: "", key), CoordinatedFixture.serializer()) }
+    }
+    // ---- M7 consensus scoring (docs/protocol.md §4) ----------------------------------------
+    post("/v0/links/{linkId}/consensus/changes") {
+        val input = call.receive<ConsensusSubmit>()
+        call.write { key ->
+            try { call.reply(repo.submitConsensus(call.parameters["linkId"] ?: "", key, input), ConsensusDecision.serializer()) }
+            catch (_: IllegalStateException) { call.respond(HttpStatusCode.Conflict) }
+        }
+    }
+    post("/v0/consensus/changes/{changeId}/accept") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key ->
+            val (linkId, _) = repo.findLinkForChange(call.parameters["changeId"] ?: "")
+            call.reply(repo.reviewConsensus(linkId, call.parameters["changeId"] ?: "", key, ConsensusAction.ACCEPT, input.idempotencyKey), ConsensusDecision.serializer())
+        }
+    }
+    post("/v0/consensus/changes/{changeId}/reject") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key ->
+            val (linkId, _) = repo.findLinkForChange(call.parameters["changeId"] ?: "")
+            call.reply(repo.reviewConsensus(linkId, call.parameters["changeId"] ?: "", key, ConsensusAction.REJECT, input.idempotencyKey), ConsensusDecision.serializer())
+        }
+    }
+    post("/v0/consensus/changes/{changeId}/withdraw") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key ->
+            val (linkId, _) = repo.findLinkForChange(call.parameters["changeId"] ?: "")
+            call.reply(repo.reviewConsensus(linkId, call.parameters["changeId"] ?: "", key, ConsensusAction.WITHDRAW, input.idempotencyKey), ConsensusDecision.serializer())
+        }
+    }
+    post("/v0/links/{linkId}/consensus/changes/{changeId}/accept") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key -> call.reply(repo.reviewConsensus(call.parameters["linkId"] ?: "", call.parameters["changeId"] ?: "", key, ConsensusAction.ACCEPT, input.idempotencyKey), ConsensusDecision.serializer()) }
+    }
+    post("/v0/links/{linkId}/consensus/changes/{changeId}/reject") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key -> call.reply(repo.reviewConsensus(call.parameters["linkId"] ?: "", call.parameters["changeId"] ?: "", key, ConsensusAction.REJECT, input.idempotencyKey), ConsensusDecision.serializer()) }
+    }
+    post("/v0/links/{linkId}/consensus/changes/{changeId}/withdraw") {
+        val input = call.receive<ConsensusReview>()
+        call.write { key -> call.reply(repo.reviewConsensus(call.parameters["linkId"] ?: "", call.parameters["changeId"] ?: "", key, ConsensusAction.WITHDRAW, input.idempotencyKey), ConsensusDecision.serializer()) }
+    }
+    post("/v0/links/{linkId}/consensus/whistle") {
+        val input = call.receive<ConsensusWhistle>()
+        call.write { key -> call.reply(repo.whistle(call.parameters["linkId"] ?: "", key, input), ConsensusSnapshot.serializer()) }
+    }
+    get("/v0/links/{linkId}/consensus") {
+        call.write { key ->
+            val matchId = call.request.queryParameters["matchId"] ?: throw IllegalArgumentException("matchId required")
+            call.reply(repo.consensusSnapshot(call.parameters["linkId"] ?: "", matchId, key), ConsensusSnapshot.serializer())
+        }
+    }
+    /** Record ledger export: every decision with its full audit trail, forever (accepted, rejected, withdrawn). */
+    get("/v0/links/{linkId}/consensus/ledger") {
+        call.write { key ->
+            val matchId = call.request.queryParameters["matchId"] ?: throw IllegalArgumentException("matchId required")
+            val snapshot = repo.consensusSnapshot(call.parameters["linkId"] ?: "", matchId, key)
+            val text = snapshot.decisions.joinToString("\n") { d ->
+                "${d.change.changeId}\t${d.change.action}\t${d.change.submittedBy}\t${d.state}\t" +
+                    (d.resolvedAt?.let { "by ${d.actor}@$it" } ?: "awaiting opposing decision") +
+                    "\tevent=${d.event.eventId}"
+            }
+            call.respondText(text.ifEmpty { "no consensus records" }, ContentType.Text.Plain)
+        }
     }
 }

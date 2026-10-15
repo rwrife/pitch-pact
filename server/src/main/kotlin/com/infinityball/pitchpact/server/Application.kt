@@ -73,21 +73,32 @@ fun Application.appModule(
             catch (_: MissingBroadcast) { call.respond(HttpStatusCode.NotFound) }
             catch (_: UnauthorizedBroadcast) { call.respond(HttpStatusCode.Forbidden) }
         }
+        fun resolveSpectatorView(code: String, count: Int): SpectatorView {
+            val repo = broadcastRepository ?: throw MissingBroadcast()
+            val base = repo.spectate(code, count)
+            val linked = repo.linkedMatch(code) ?: return base
+            val consensus = registryRepository?.publicSnapshot(linked.first, linked.second) ?: return base
+            return base.copy(
+                officialScore = consensus.officialScore,
+                pendingChanges = consensus.pendingChanges,
+                events = consensus.events,
+            )
+        }
         get("/v0/spectate/{code}") {
-            val repo = broadcastRepository ?: run { call.respond(HttpStatusCode.ServiceUnavailable); return@get }
+            if (broadcastRepository == null) { call.respond(HttpStatusCode.ServiceUnavailable); return@get }
             val code = call.parameters["code"]?.uppercase() ?: ""
             val ip = call.request.origin.remoteAddress
             if (!traffic.allow("read:$code", ip, 120)) { call.respond(HttpStatusCode.TooManyRequests); return@get }
-            try { call.respond(repo.spectate(code, traffic.count(code, ip))) }
+            try { call.respond(resolveSpectatorView(code, traffic.count(code, ip))) }
             catch (_: MissingBroadcast) { call.respond(HttpStatusCode.NotFound) }
             catch (_: IllegalArgumentException) { call.respond(HttpStatusCode.NotFound) }
         }
         get("/spectate/{code}") {
-            val repo = broadcastRepository ?: run { call.respond(HttpStatusCode.ServiceUnavailable); return@get }
+            if (broadcastRepository == null) { call.respond(HttpStatusCode.ServiceUnavailable); return@get }
             val code = call.parameters["code"]?.uppercase() ?: ""
             val ip = call.request.origin.remoteAddress
             if (!traffic.allow("read:$code", ip, 120)) { call.respond(HttpStatusCode.TooManyRequests); return@get }
-            try { call.respondText(renderSpectatorHtml(code, repo.spectate(code, traffic.count(code, ip))), ContentType.Text.Html) }
+            try { call.respondText(renderSpectatorHtml(code, resolveSpectatorView(code, traffic.count(code, ip))), ContentType.Text.Html) }
             catch (_: MissingBroadcast) { call.respond(HttpStatusCode.NotFound) }
             catch (_: IllegalArgumentException) { call.respond(HttpStatusCode.NotFound) }
         }
