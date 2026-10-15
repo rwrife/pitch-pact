@@ -124,7 +124,7 @@ class ConsensusPanelJourneyTest {
                 }
             }
             compose.runOnUiThread { panel.value = PanelSpec(homeClient, home.team.id, home.ownerKey) }
-            compose.awaitIdle()
+            compose.waitForIdle()
             type("consensus.matchId", "fixture-1")
             type("consensus.jersey", "9")
             click("consensus.submit")
@@ -133,7 +133,7 @@ class ConsensusPanelJourneyTest {
             compose.onNodeWithTag("consensus.withdraw.0").assertExists()
 
             compose.runOnUiThread { panel.value = PanelSpec(awayClient, away.team.id, away.ownerKey) }
-            compose.awaitIdle()
+            compose.waitForIdle()
             type("consensus.matchId", "fixture-1")
             expectText("Review: add goal #9 (HOME)")
             
