@@ -83,12 +83,12 @@ class ConsensusPanelJourneyTest {
     }
 
     private fun click(tag: String) {
-        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).exists() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag(tag).performClick()
     }
 
     private fun type(tag: String, value: String) {
-        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).exists() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag(tag).performTextInput(value)
     }
 
