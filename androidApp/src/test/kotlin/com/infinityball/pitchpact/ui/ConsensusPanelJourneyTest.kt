@@ -135,6 +135,8 @@ class ConsensusPanelJourneyTest {
             compose.runOnUiThread { panel.value = PanelSpec(awayClient, away.team.id, away.ownerKey) }
             compose.waitForIdle()
             type("consensus.matchId", "fixture-1")
+            // Snapshot only renders after an explicit refresh on this side.
+            compose.onNodeWithText("Refresh official score").performClick()
             expectText("Review: add goal #9 (HOME)")
             
             click("consensus.accept.0")
