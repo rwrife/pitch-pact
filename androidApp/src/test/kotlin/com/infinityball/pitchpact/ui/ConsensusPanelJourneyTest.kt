@@ -3,6 +3,8 @@ package com.infinityball.pitchpact.ui
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import com.infinityball.pitchpact.dto.*
 import com.infinityball.pitchpact.server.RegistryRepository
 import com.infinityball.pitchpact.server.appModule
@@ -109,9 +111,20 @@ class ConsensusPanelJourneyTest {
             val homeClient = RegistryClient("http://127.0.0.1:$port")
             val awayClient = RegistryClient("http://127.0.0.1:$port")
 
+            // A ComposeTestRule allows setContent exactly once; swap the rendered
+            // side through observable state instead of a second setContent call.
+            val panel = mutableStateOf<PanelSpec?>(null)
             compose.setContent {
-                MaterialTheme { ConsensusPanel(homeClient, first, home.team.id, home.ownerKey) }
+                panel.value?.let { spec ->
+                    MaterialTheme {
+                        key(spec.teamId) {
+                            ConsensusPanel(spec.client, first, spec.teamId, spec.ownerKey)
+                        }
+                    }
+                }
             }
+            compose.runOnUiThread { panel.value = PanelSpec(homeClient, home.team.id, home.ownerKey) }
+            compose.awaitIdle()
             type("consensus.matchId", "fixture-1")
             type("consensus.jersey", "9")
             click("consensus.submit")
@@ -119,10 +132,8 @@ class ConsensusPanelJourneyTest {
             expectText("Awaiting opponent: add goal #9 (HOME)")
             compose.onNodeWithTag("consensus.withdraw.0").assertExists()
 
-            compose.runOnUiThread { }
-            compose.setContent {
-                MaterialTheme { ConsensusPanel(awayClient, first, away.team.id, away.ownerKey) }
-            }
+            compose.runOnUiThread { panel.value = PanelSpec(awayClient, away.team.id, away.ownerKey) }
+            compose.awaitIdle()
             type("consensus.matchId", "fixture-1")
             expectText("Review: add goal #9 (HOME)")
             
@@ -134,4 +145,6 @@ class ConsensusPanelJourneyTest {
             server.stop(100, 200)
         }
     }
+
+    private data class PanelSpec(val client: RegistryClient, val teamId: String, val ownerKey: String)
 }
