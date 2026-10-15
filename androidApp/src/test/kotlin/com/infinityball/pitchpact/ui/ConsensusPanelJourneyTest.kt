@@ -93,7 +93,7 @@ class ConsensusPanelJourneyTest {
     }
 
     private fun expectText(text: String) =
-        compose.waitUntil(10_000) { compose.onNodeWithText(text, substring = true).exists() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
 
     @Test fun scorerSubmitsGoalAndOpposingSidelineAcceptsItIntoTheOfficialScore() {
         val port = freePort()
