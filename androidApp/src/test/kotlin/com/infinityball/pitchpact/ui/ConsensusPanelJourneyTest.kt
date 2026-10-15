@@ -82,6 +82,19 @@ class ConsensusPanelJourneyTest {
         return links.single().id
     }
 
+    private fun click(tag: String) {
+        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).isDisplayed }
+        compose.onNodeWithTag(tag).performClick()
+    }
+
+    private fun type(tag: String, value: String) {
+        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).isDisplayed }
+        compose.onNodeWithTag(tag).performTextInput(value)
+    }
+
+    private fun expectText(text: String) =
+        compose.waitUntil(10_000) { compose.onNodeWithText(text, substring = true).exists }
+
     @Test fun scorerSubmitsGoalAndOpposingSidelineAcceptsItIntoTheOfficialScore() {
         val port = freePort()
         val server = embeddedServer(Netty, port = port) {
@@ -99,23 +112,24 @@ class ConsensusPanelJourneyTest {
             compose.setContent {
                 MaterialTheme { ConsensusPanel(homeClient, first, home.team.id, home.ownerKey) }
             }
-            compose.onAllNodesWithTag("consensus.matchId").fetchFirstNode().performTextInput("fixture-1")
-            compose.onAllNodesWithTag("consensus.jersey").fetchFirstNode().performTextInput("9")
-            compose.onAllNodesWithText("Submit goal for opponent review").fetchFirstNode().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("OFFICIAL 0-0 · live").fetchFirstNode().exists }
-            assertTrue(compose.onAllNodesWithText("Awaiting opponent: add goal #9 (HOME)").fetchFirstNode().exists)
-            assertTrue(compose.onAllNodesWithText("Withdraw").fetchFirstNode().exists)
+            type("consensus.matchId", "fixture-1")
+            type("consensus.jersey", "9")
+            click("consensus.submit")
+            expectText("OFFICIAL 0-0 · live")
+            expectText("Awaiting opponent: add goal #9 (HOME)")
+            assertTrue(compose.onNodeWithTag("consensus.withdraw.0").exists())
 
+            compose.runOnUiThread { }
             compose.setContent {
                 MaterialTheme { ConsensusPanel(awayClient, first, away.team.id, away.ownerKey) }
             }
-            compose.onAllNodesWithTag("consensus.matchId").fetchFirstNode().performTextInput("fixture-1")
-            compose.onAllNodesWithText("Refresh official score").fetchFirstNode().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Review: add goal #9 (HOME)").fetchFirstNode().exists }
-            compose.onAllNodesWithText("Accept").fetchFirstNode().performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("OFFICIAL 1-0 · live").fetchFirstNode().exists }
+            type("consensus.matchId", "fixture-1")
+            expectText("Review: add goal #9 (HOME)")
+            
+            click("consensus.accept.0")
+            expectText("OFFICIAL 1-0 · live")
             // The record ledger is visible from the accepting side too, with its audit trail.
-            assertTrue(compose.onAllNodesWithText("ACCEPTED · add goal #9 (HOME) · by HOME · resolved by AWAY", substring = true).fetchFirstNode().exists)
+            expectText("ACCEPTED · add goal #9 (HOME) · by HOME · resolved by AWAY")
         } finally {
             server.stop(100, 200)
         }

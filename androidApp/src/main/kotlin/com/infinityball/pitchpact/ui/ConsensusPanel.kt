@@ -43,22 +43,22 @@ fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, own
                 System.currentTimeMillis(), jersey.toInt(), UUID.randomUUID().toString())
             client.raw("POST", "/v0/links/${link.id}/consensus/changes", ownerKey, body)
             refresh()
-        } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Submit goal for opponent review") }
+        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.submit" }) { Text("Submit goal for opponent review") }
         Button(enabled = matchId.isNotEmpty(), onClick = { run { refresh() } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Refresh official score") }
         if (snapshot.isNotEmpty()) {
             Text(facade.scoreboard(snapshot), style = MaterialTheme.typography.titleMedium)
-            facade.pendingRows(snapshot, side).forEach { row ->
+            facade.pendingRows(snapshot, side).forEachIndexed { rowIdx, row ->
                 val (changeId, label, action) = row.split("|")
                 Text(label)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (action == "review") {
                         Button(onClick = { run { client.raw("POST", "/v0/links/${link.id}/consensus/changes/$changeId/accept", ownerKey, facade.reviewBody(UUID.randomUUID().toString())); refresh() } },
-                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Accept") }
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.accept.$rowIdx" }) { Text("Accept") }
                         OutlinedButton(onClick = { run { client.raw("POST", "/v0/links/${link.id}/consensus/changes/$changeId/reject", ownerKey, facade.reviewBody(UUID.randomUUID().toString())); refresh() } },
-                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Reject") }
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.reject.$rowIdx" }) { Text("Reject") }
                     } else {
                         OutlinedButton(onClick = { run { client.raw("POST", "/v0/links/${link.id}/consensus/changes/$changeId/withdraw", ownerKey, facade.reviewBody(UUID.randomUUID().toString())); refresh() } },
-                            modifier = Modifier.heightIn(min = 48.dp)) { Text("Withdraw") }
+                            modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.withdraw.$rowIdx" }) { Text("Withdraw") }
                     }
                 }
             }
