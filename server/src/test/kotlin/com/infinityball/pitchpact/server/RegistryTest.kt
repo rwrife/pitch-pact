@@ -179,6 +179,33 @@ class RegistryTest {
         assertEquals(2, finalAway.events.size)
     }
 
+    @Test fun linkedBroadcastRequiresTeamCapabilityAndMirrorsConsensusWithoutLosingOtherEvents() = testApplication {
+        val registry = RegistryRepository(Files.createTempDirectory("registry-linked-broadcast"))
+        val broadcast = BroadcastRepository(Files.createTempDirectory("broadcast-linked-consensus"))
+        application { appModule(broadcastRepository = broadcast, registryRepository = registry) }
+        val home = client.register("Broadcast Reds", "home-broadcast")
+        val away = client.register("Broadcast Blues", "away-broadcast")
+        val link = client.link(home, away)
+        val match = "broadcast-match-1"
+        val create = codec.encodeToString(BroadcastCreate.serializer(), BroadcastCreate(match, "Reds", "Blues", teamLinkId = link.id, idempotencyKey = "broadcast-create-0001"))
+        assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create).status)
+        assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create, "spectator-code").status)
+        val started = codec.decodeFromString(BroadcastStarted.serializer(), client.send("/v0/broadcasts", create, home.ownerKey).bodyAsText())
+        val goal = LedgerEvent.Event("linked-goal-1", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9))
+        val change = ScoreChange("linked-change-1", match, Side.HOME, goal.eventId, ScoreChangeAction.ADD)
+        client.send("/v0/links/${link.id}/consensus/changes", codec.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, goal, "linked-submit-0001")), home.ownerKey)
+        val pending = codec.decodeFromString(SpectatorView.serializer(), client.get("/v0/spectate/${started.spectatorCode}").bodyAsText())
+        assertEquals(0, pending.officialScore.homeScore)
+        assertEquals(listOf(change.changeId), pending.pendingChanges.map { it.changeId })
+        assertEquals(listOf(goal.eventId), pending.events.map { it.eventId })
+        assertEquals(HttpStatusCode.NotFound, client.post("/v0/spectate/${started.spectatorCode}").status)
+        client.send("/v0/links/${link.id}/consensus/changes/${change.changeId}/accept", "{\"idempotencyKey\":\"linked-accept-0001\"}", away.ownerKey)
+        val accepted = codec.decodeFromString(SpectatorView.serializer(), client.get("/v0/spectate/${started.spectatorCode}").bodyAsText())
+        assertEquals(1, accepted.officialScore.homeScore)
+        assertTrue(accepted.pendingChanges.isEmpty())
+        assertEquals(listOf(goal.eventId), accepted.events.map { it.eventId })
+    }
+
     @Test fun consensusStateIsPerMatchAndDeletingTeamErasesIt() = testApplication {
         val dir = Files.createTempDirectory("registry-consensus-delete")
         application { appModule(registryRepository = RegistryRepository(dir)) }

@@ -42,7 +42,12 @@ fun Application.appModule(
             }
             try {
                 val input = call.receive<BroadcastCreate>()
-                if (!authorize(input.matchId, call.request.header("Authorization"))) { call.respond(HttpStatusCode.Forbidden); return@post }
+                val key = call.request.header(HttpHeaders.Authorization)?.removePrefix("Bearer ") ?: ""
+                val linkId = input.teamLinkId
+                val allowed = if (linkId != null)
+                    registryRepository?.authorizeBroadcast(linkId, input.matchId, key) == true
+                else authorize(input.matchId, call.request.header(HttpHeaders.Authorization))
+                if (!allowed) { call.respond(HttpStatusCode.Forbidden); return@post }
                 call.respond(repo.create(input))
             } catch (_: IllegalArgumentException) { call.respond(HttpStatusCode.BadRequest) }
         }
@@ -81,7 +86,7 @@ fun Application.appModule(
             return base.copy(
                 officialScore = consensus.officialScore,
                 pendingChanges = consensus.pendingChanges,
-                events = consensus.events,
+                events = (base.events + consensus.events).distinctBy { it.eventId },
             )
         }
         get("/v0/spectate/{code}") {
