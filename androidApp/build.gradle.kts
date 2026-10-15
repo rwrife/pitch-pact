@@ -103,4 +103,9 @@ dependencies {
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)
+    // Loopback hosted-service instance for the scorer journey.
+    testImplementation(libs.ktor.server.core)
+    testImplementation(libs.ktor.server.netty)
+    testImplementation(libs.ktor.server.content.negotiation)
+    testImplementation(libs.ktor.serialization.kotlinx.json)
 }
