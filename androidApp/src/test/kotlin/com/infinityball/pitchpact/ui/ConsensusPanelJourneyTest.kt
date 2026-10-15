@@ -83,17 +83,17 @@ class ConsensusPanelJourneyTest {
     }
 
     private fun click(tag: String) {
-        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).isDisplayed }
+        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).exists() }
         compose.onNodeWithTag(tag).performClick()
     }
 
     private fun type(tag: String, value: String) {
-        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).isDisplayed }
+        compose.waitUntil(10_000) { compose.onNodeWithTag(tag).exists() }
         compose.onNodeWithTag(tag).performTextInput(value)
     }
 
     private fun expectText(text: String) =
-        compose.waitUntil(10_000) { compose.onNodeWithText(text, substring = true).exists }
+        compose.waitUntil(10_000) { compose.onNodeWithText(text, substring = true).exists() }
 
     @Test fun scorerSubmitsGoalAndOpposingSidelineAcceptsItIntoTheOfficialScore() {
         val port = freePort()
@@ -117,7 +117,7 @@ class ConsensusPanelJourneyTest {
             click("consensus.submit")
             expectText("OFFICIAL 0-0 · live")
             expectText("Awaiting opponent: add goal #9 (HOME)")
-            assertTrue(compose.onNodeWithTag("consensus.withdraw.0").exists())
+            compose.onNodeWithTag("consensus.withdraw.0").assertExists()
 
             compose.runOnUiThread { }
             compose.setContent {
