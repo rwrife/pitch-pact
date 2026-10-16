@@ -44,7 +44,7 @@ import PitchPactStore
             if !json.isEmpty {
                 Section("Score") {
                     Text("OFFICIAL \((try? rules.official(json: json)) ?? "Unavailable")").accessibilityIdentifier("officialScore")
-                    Text("Opposing acceptance arrives in M7")
+                    Text("Offline captures remain unconfirmed here. Linked consensus submissions and opposing review use the team registry screen.")
                     Text("Pending score \((try? rules.pending(json: json)) ?? "Unavailable")").accessibilityIdentifier("pendingScore")
                     TimelineView(.periodic(from: .now, by: 1)) { _ in
                         Text((try? clockText()) ?? "Clock requires recovery")
