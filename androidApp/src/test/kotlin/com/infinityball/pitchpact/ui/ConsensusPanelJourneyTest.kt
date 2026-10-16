@@ -138,7 +138,6 @@ class ConsensusPanelJourneyTest {
             // Snapshot only renders after an explicit refresh on this side.
             compose.onNodeWithText("Refresh official score").performClick()
             expectText("Review: add goal #9 (HOME)")
-            
             click("consensus.accept.0")
             expectText("OFFICIAL 1-0 · live")
             // The record ledger is visible from the accepting side too, with its audit trail.

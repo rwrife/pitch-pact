@@ -110,6 +110,8 @@ struct PitchPactTests {
         #expect(submitBody.contains("change-1"))
         #expect(submitBody.contains("event-1"))
 
+        // Stable wire fixture exercises the native bridge; server integration owns
+        // live two-party authorization and the adversarial contested-half run.
         let sampleSnapshot = """
         {
           "matchId": "m1", "events": [],
