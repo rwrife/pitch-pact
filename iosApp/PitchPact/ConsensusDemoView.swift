@@ -80,9 +80,11 @@ import SwiftUI
     private func refresh() {
         snapshot = (try? rules.demoProject(bookJson: book, whistlesJson: "[]")) ?? ""
     }
+    // Never call the facade on an empty snapshot: Kotlin throws there and a
+    // thrown Kotlin error is fatal across the ObjC bridge even under try?.
     private var scoreline: String {
-        (try? rules.scoreboard(snapshotJson: snapshot).components(separatedBy: "\n").first) ?? "OFFICIAL — —"
+        snapshot.isEmpty ? "OFFICIAL 0-0 · live" : ((try? rules.scoreboard(snapshotJson: snapshot).components(separatedBy: "\n").first) ?? "OFFICIAL — —")
     }
-    private var pendingRows: [String] { (try? rules.pendingRows(snapshotJson: snapshot, mySide: side)) ?? [] }
-    private var ledger: String { (try? rules.recordLedger(snapshotJson: snapshot)) ?? "" }
+    private var pendingRows: [String] { snapshot.isEmpty ? [] : ((try? rules.pendingRows(snapshotJson: snapshot, mySide: side)) ?? []) }
+    private var ledger: String { snapshot.isEmpty ? "No consensus records" : ((try? rules.recordLedger(snapshotJson: snapshot)) ?? "") }
 }

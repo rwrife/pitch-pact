@@ -30,6 +30,7 @@ class ConsensusFacade {
         json.encodeToString(ConsensusWhistle.serializer(), ConsensusWhistle(matchId, Side.valueOf(side), idempotencyKey))
 
     /** Official score first, then a separately labeled pending band. Never merges pending into official. */
+    @Throws(IllegalArgumentException::class)
     fun scoreboard(snapshotJson: String): String {
         val s = json.decodeFromString(ConsensusSnapshot.serializer(), snapshotJson)
         val label = if (s.official) "FINAL (official)" else "live"
@@ -37,6 +38,7 @@ class ConsensusFacade {
     }
 
     /** Pending band: one `changeId|text` row per pending change, for the viewer side to accept/reject (or withdraw if own). */
+    @Throws(IllegalArgumentException::class)
     fun pendingRows(snapshotJson: String, mySide: String): List<String> {
         val s = json.decodeFromString(ConsensusSnapshot.serializer(), snapshotJson)
         val me = Side.valueOf(mySide)
@@ -47,6 +49,7 @@ class ConsensusFacade {
     }
 
     /** Record ledger: every decision including rejected/withdrawn, forever. */
+    @Throws(IllegalArgumentException::class)
     fun recordLedger(snapshotJson: String): String {
         val s = json.decodeFromString(ConsensusSnapshot.serializer(), snapshotJson)
         return s.decisions.joinToString("\n") { d ->
