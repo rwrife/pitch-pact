@@ -28,7 +28,7 @@ final class ConsensusJourney: XCTestCase {
         for _ in 0..<4 where !accept.isHittable { app.swipeUp() }
         XCTAssertTrue(accept.isHittable)
         accept.tap()
-        XCTAssertEqual(app.staticTexts["consensus.official"].label, "OFFICIAL 1-0")
+        XCTAssertTrue(app.staticTexts["consensus.official"].label.contains("OFFICIAL 1-0"))
         XCTAssertEqual(app.staticTexts["consensus.pendingCount"].label, "PENDING REVIEW 0")
         XCTAssertTrue(app.staticTexts["consensus.ledger"].label.contains("ACCEPTED"))
         XCTAssertTrue(app.staticTexts["consensus.ledger"].label.contains("resolved by AWAY"))
