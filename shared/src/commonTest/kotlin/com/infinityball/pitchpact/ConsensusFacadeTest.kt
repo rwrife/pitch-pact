@@ -65,4 +65,17 @@ class ConsensusFacadeTest {
         assertTrue(ledger.contains("WITHDRAWN") && ledger.contains("resolved by"), ledger)
         assertEquals("No consensus records", facade.recordLedger(json.encodeToString(ConsensusSnapshot.serializer(), snapshot(emptyList()))))
     }
+
+    @Test fun offlineTwoSidelineBridgeKeepsOfficialZeroUntilOpponentAccepts() {
+        val pending = facade.demoSubmit("[]", "demo", "HOME", "c1", "e1", 1000, 9, 1000)
+        val before = facade.demoProject(pending, "[]")
+        assertTrue(facade.scoreboard(before).contains("OFFICIAL 0-0"))
+        assertTrue(facade.pendingRows(before, "AWAY").single().contains("Review:"))
+        assertFailsWith<IllegalArgumentException> { facade.demoReview(pending, "c1", "HOME", "accept", 1100) }
+        val accepted = facade.demoReview(pending, "c1", "AWAY", "accept", 1100)
+        val after = facade.demoProject(accepted, "[]")
+        assertTrue(facade.scoreboard(after).contains("OFFICIAL 1-0"))
+        assertTrue(facade.pendingRows(after, "AWAY").isEmpty())
+        assertTrue(facade.recordLedger(after).contains("resolved by AWAY"))
+    }
 }
