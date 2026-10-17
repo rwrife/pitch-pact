@@ -47,6 +47,28 @@ fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, own
         Button(enabled = matchId.isNotEmpty(), onClick = { run { refresh() } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Refresh official score") }
         if (snapshot.isNotEmpty()) {
             Text(facade.scoreboard(snapshot), style = MaterialTheme.typography.titleMedium)
+            // Own accepted goals may be removed or corrected — always as a NEW pending decision.
+            facade.acceptedGoalRows(snapshot, side).forEach { row ->
+                val (targetId, label) = row.split("|")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("$label (your sideline)")
+                    Button(onClick = { run {
+                        val body = facade.changeGoal(snapshot, side, targetId, "remove",
+                            UUID.randomUUID().toString(), targetId, targetId,
+                            System.currentTimeMillis(), 0, UUID.randomUUID().toString())
+                        client.raw("POST", "/v0/links/${link.id}/consensus/changes", ownerKey, body)
+                        refresh()
+                    } }, modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.remove.$targetId" }) { Text("Remove") }
+                    Button(enabled = jersey.isNotEmpty(), onClick = { run {
+                        val replacementId = UUID.randomUUID().toString()
+                        val body = facade.changeGoal(snapshot, side, targetId, "correct",
+                            UUID.randomUUID().toString(), UUID.randomUUID().toString(), replacementId,
+                            System.currentTimeMillis(), jersey.toInt(), UUID.randomUUID().toString())
+                        client.raw("POST", "/v0/links/${link.id}/consensus/changes", ownerKey, body)
+                        refresh()
+                    } }, modifier = Modifier.heightIn(min = 48.dp).semantics { testTag = "consensus.correct.$targetId" }) { Text("Correct to #") }
+                }
+            }
             facade.pendingRows(snapshot, side).forEachIndexed { rowIdx, row ->
                 val (changeId, label, action) = row.split("|")
                 Text(label)

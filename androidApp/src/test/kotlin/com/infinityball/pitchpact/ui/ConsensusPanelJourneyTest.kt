@@ -142,6 +142,24 @@ class ConsensusPanelJourneyTest {
             expectText("OFFICIAL 1-0 · live")
             // The record ledger is visible from the accepting side too, with its audit trail.
             expectText("ACCEPTED · add goal #9 (HOME) · by HOME · resolved by AWAY")
+
+            // Home's own accepted goal can be removed — a NEW pending decision the away side must accept.
+            compose.runOnUiThread { panel.value = PanelSpec(homeClient, home.team.id, home.ownerKey) }
+            compose.waitForIdle()
+            type("consensus.matchId", "fixture-1")
+            compose.onNodeWithText("Refresh official score").performClick()
+            expectText("Goal #9 (your sideline)")
+            compose.onNodeWithText("Remove").performClick()
+            expectText("Awaiting opponent: remove goal #9 (HOME)")
+
+            compose.runOnUiThread { panel.value = PanelSpec(awayClient, away.team.id, away.ownerKey) }
+            compose.waitForIdle()
+            type("consensus.matchId", "fixture-1")
+            compose.onNodeWithText("Refresh official score").performClick()
+            expectText("Review: remove goal #9 (HOME)")
+            click("consensus.accept.0")
+            expectText("OFFICIAL 0-0 · live")
+            expectText("ACCEPTED · remove goal #9 (HOME) · by HOME · resolved by AWAY")
         } finally {
             server.stop(100, 200)
         }

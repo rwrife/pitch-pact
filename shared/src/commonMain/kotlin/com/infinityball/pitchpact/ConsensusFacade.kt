@@ -25,7 +25,45 @@ class ConsensusFacade {
         val change = ScoreChange(changeId, matchId, s, eventId, ScoreChangeAction.ADD)
         return json.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, event, idempotencyKey))
     }
+    /** Accepted own goals remain editable through new pending decisions, never by rewriting history. */
+    @Throws(IllegalArgumentException::class)
+    fun acceptedGoalRows(snapshotJson: String, side: String): List<String> {
+        val s = json.decodeFromString(ConsensusSnapshot.serializer(), snapshotJson)
+        val me = Side.valueOf(side)
+        // Targets already under a live remove/correct (pending or accepted) are not offered again.
+        val touched = s.decisions.filter { it.change.action != ScoreChangeAction.ADD &&
+            (it.state == ConsensusState.ACCEPTED || it.state == ConsensusState.PENDING) }
+            .map { d -> (d.event as? LedgerEvent.Correction)?.correctsEventId ?: d.change.ledgerEventId }.toSet()
+        return s.decisions.filter { it.state == ConsensusState.ACCEPTED && it.change.action == ScoreChangeAction.ADD &&
+            it.change.submittedBy == me && it.change.ledgerEventId !in touched &&
+            it.event is LedgerEvent.Event && it.event.payload is EventPayload.Goal }
+            .map { "${it.change.ledgerEventId}|Goal #${((it.event as LedgerEvent.Event).payload as EventPayload.Goal).jerseyNumber ?: "?"}" }
+    }
+
+    @Throws(IllegalArgumentException::class)
+    fun changeGoal(snapshotJson: String, side: String, targetId: String, action: String,
+                   changeId: String, eventId: String, replacementId: String, epoch: Long,
+                   jersey: Int, idempotencyKey: String): String {
+        val s = json.decodeFromString(ConsensusSnapshot.serializer(), snapshotJson)
+        val me = Side.valueOf(side)
+        require(targetId in acceptedGoalRows(snapshotJson, side).map { it.substringBefore('|') }) { "Only an accepted own goal can be changed" }
+        val original = s.decisions.first { it.change.ledgerEventId == targetId && it.change.action == ScoreChangeAction.ADD }.event as LedgerEvent.Event
+        val kind = ScoreChangeAction.valueOf(action.uppercase())
+        val event = when (kind) {
+            ScoreChangeAction.REMOVE -> original
+            ScoreChangeAction.CORRECT -> {
+                require(jersey in 0..99) { "Jersey number must be 0-99" }
+                LedgerEvent.Correction(eventId, me, epoch, targetId,
+                    LedgerEvent.Event(replacementId, me, epoch, (original.payload as EventPayload.Goal).copy(jerseyNumber = jersey)))
+            }
+            ScoreChangeAction.ADD -> throw IllegalArgumentException("Use submitGoal for additions")
+        }
+        val change = ScoreChange(changeId, s.matchId, me, event.eventId, kind)
+        return json.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, event, idempotencyKey))
+    }
+
     fun reviewBody(idempotencyKey: String): String = json.encodeToString(ConsensusReview.serializer(), ConsensusReview(idempotencyKey))
+    // ponytail: Only original accepted goals offered here; correction-chain selection comes when edit history UI ships.
     fun whistleBody(matchId: String, side: String, idempotencyKey: String): String =
         json.encodeToString(ConsensusWhistle.serializer(), ConsensusWhistle(matchId, Side.valueOf(side), idempotencyKey))
 

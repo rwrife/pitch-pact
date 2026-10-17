@@ -78,4 +78,55 @@ class ConsensusFacadeTest {
         assertTrue(facade.pendingRows(after, "AWAY").isEmpty())
         assertTrue(facade.recordLedger(after).contains("resolved by AWAY"))
     }
+
+    @Test fun acceptedGoalRowsAndChangesTrackOnlyOwnAcceptedGoals() {
+        val pending = decision("c-pending", Side.HOME, ConsensusState.PENDING)
+        val acceptedHome = decision("c-acc", Side.HOME, ConsensusState.ACCEPTED)
+        val acceptedAway = decision("c-away", Side.AWAY, ConsensusState.ACCEPTED)
+        val snap = json.encodeToString(ConsensusSnapshot.serializer(), snapshot(listOf(pending, acceptedHome, acceptedAway)))
+        val homeRows = facade.acceptedGoalRows(snap, "HOME")
+        assertEquals(listOf("e-c-acc|Goal #9"), homeRows)
+        val awayRows = facade.acceptedGoalRows(snap, "AWAY")
+        assertEquals(listOf("e-c-away|Goal #9"), awayRows)
+
+        // Generating a correction produces a valid ConsensusSubmit referencing the original event
+        val correctBody = facade.changeGoal(snap, "HOME", "e-c-acc", "correct", "c-fix", "e-fix", "rep-fix", 2000, 11, "k-1")
+        val correct = json.decodeFromString(ConsensusSubmit.serializer(), correctBody)
+        assertEquals(ScoreChangeAction.CORRECT, correct.change.action)
+        assertTrue(correct.event is LedgerEvent.Correction)
+        assertEquals("e-c-acc", (correct.event as LedgerEvent.Correction).correctsEventId)
+
+        // Generating a removal reproduces the original event row
+        val removeBody = facade.changeGoal(snap, "HOME", "e-c-acc", "remove", "c-rm", "e-rm", "rep-rm", 2000, 0, "k-2")
+        val remove = json.decodeFromString(ConsensusSubmit.serializer(), removeBody)
+        assertEquals(ScoreChangeAction.REMOVE, remove.change.action)
+        assertEquals((acceptedHome.event as LedgerEvent.Event).eventId, remove.change.ledgerEventId)
+    }
+
+    @Test fun acceptedRemoveAndCorrectStayPendingUntilOpponentApproves() {
+        var book = facade.demoSubmit("[]", "demo", "HOME", "c1", "e1", 1000, 9, 1000)
+        book = facade.demoReview(book, "c1", "AWAY", "accept", 1001)
+        val start = facade.demoProject(book, "[]")
+        assertEquals(listOf("e1|Goal #9"), facade.acceptedGoalRows(start, "HOME"))
+
+        val correction = json.decodeFromString(ConsensusSubmit.serializer(),
+            facade.changeGoal(start, "HOME", "e1", "correct", "c2", "e2", "r2", 1002, 11, "key-2"))
+        var decisions = json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(ConsensusDecision.serializer()), book)
+        decisions = ConsensusBook.submit(decisions, SubmissionRequest(correction.change, correction.event), Side.HOME, 1002)
+        var projected = json.encodeToString(ConsensusSnapshot.serializer(), snapshot(decisions))
+        assertTrue(facade.acceptedGoalRows(projected, "HOME").isEmpty()) // cannot duplicate pending edit
+        assertEquals("1-0", ConsensusBook.project(decisions, emptySet()).officialScore.render())
+        decisions = ConsensusBook.review(decisions, "c2", Side.AWAY, ConsensusAction.ACCEPT, 1003)
+        assertEquals("1-0", ConsensusBook.project(decisions, emptySet()).officialScore.render())
+
+        // Removing original goal leaves correction row in audit but removes its score only after review.
+        // The UI doesn't offer the old goal after correction; API still accepts a historical removal.
+        val original = decisions.first().event
+        decisions = ConsensusBook.submit(decisions,
+            SubmissionRequest(ScoreChange("c3", "demo", Side.HOME, "e1", ScoreChangeAction.REMOVE), original), Side.HOME, 1004)
+        assertEquals("1-0", ConsensusBook.project(decisions, emptySet()).officialScore.render())
+        decisions = ConsensusBook.review(decisions, "c3", Side.AWAY, ConsensusAction.ACCEPT, 1005)
+        assertEquals("0-0", ConsensusBook.project(decisions, emptySet()).officialScore.render())
+        assertEquals(3, decisions.size)
+    }
 }

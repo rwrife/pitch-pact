@@ -293,6 +293,33 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
             Button("Refresh official score") { run { try await refresh() } }.disabled(matchId.isEmpty)
             if !snapshot.isEmpty {
                 Text((try? rules.scoreboard(snapshotJson: snapshot)) ?? "Scoreboard unavailable").accessibilityIdentifier("consensus.scoreboard")
+                // Own accepted goals may be removed or corrected — always as a NEW pending decision.
+                ForEach((try? rules.acceptedGoalRows(snapshotJson: snapshot, side: side)) ?? [], id: \.self) { row in
+                    let parts = row.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    if parts.count == 2 {
+                        let targetId = parts[0]
+                        HStack {
+                            Text("\(parts[1]) (your sideline)")
+                            Button("Remove") { run {
+                                let body = try rules.changeGoal(snapshotJson: snapshot, side: side, targetId: targetId,
+                                    action: "remove", changeId: UUID().uuidString, eventId: targetId, replacementId: targetId,
+                                    epoch: Int64(Date().timeIntervalSince1970 * 1000), jersey: -1,
+                                    idempotencyKey: UUID().uuidString)
+                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await refresh()
+                            } }.accessibilityIdentifier("consensus.remove")
+                            Button("Correct to #\(jersey)") { run {
+                                let replacementId = UUID().uuidString
+                                let body = try rules.changeGoal(snapshotJson: snapshot, side: side, targetId: targetId,
+                                    action: "correct", changeId: UUID().uuidString, eventId: UUID().uuidString,
+                                    replacementId: replacementId, epoch: Int64(Date().timeIntervalSince1970 * 1000),
+                                    jersey: Int32(jersey) ?? -1, idempotencyKey: UUID().uuidString)
+                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await refresh()
+                            } }.disabled(jersey.isEmpty).accessibilityIdentifier("consensus.correct")
+                        }
+                    }
+                }
                 ForEach((try? rules.pendingRows(snapshotJson: snapshot, mySide: side)) ?? [], id: \.self) { row in
                     let parts = row.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
                     if parts.count == 3 {
