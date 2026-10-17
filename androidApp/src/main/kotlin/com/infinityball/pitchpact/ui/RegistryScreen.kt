@@ -52,6 +52,9 @@ class RegistryClient(private val base: String) {
                 conn.inputStream.bufferedReader().use { it.readText() }
             } finally { conn.disconnect() }
         }
+    /** Raw JSON transport for the consensus panel; DTO parsing and wording stay in shared ConsensusFacade. */
+    suspend fun raw(method: String, path: String, key: String, body: String?): String =
+        withContext(Dispatchers.IO) { call(method, path, key, body) }
     private suspend fun <T> one(method: String, path: String, key: String?, body: String?, s: KSerializer<T>): T =
         withContext(Dispatchers.IO) { json.decodeFromString(s, call(method, path, key, body)) }
     private suspend fun many(path: String, key: String?, s: KSerializer<*>): List<*> =
@@ -194,6 +197,7 @@ fun RegistryScreen(store: RoomTeamStore, schedule: com.infinityball.pitchpact.da
                             sharedSchedule = client.schedule(c.team.id, c.ownerKey)
                         } }) { Text("Confirm fixture") }
                     }
+                    ConsensusPanel(client, link, c.team.id, c.ownerKey)
                     OutlinedTextField(kickoff, { kickoff = it }, label = { Text("Kickoff epoch millis") })
                     OutlinedTextField(location, { location = it }, label = { Text("Location") })
                     OutlinedTextField(homeUniform, { homeUniform = it }, label = { Text("Home uniform") })

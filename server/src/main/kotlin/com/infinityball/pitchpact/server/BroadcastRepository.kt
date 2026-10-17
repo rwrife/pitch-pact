@@ -120,6 +120,11 @@ class BroadcastRepository(private val directory: Path, private val now: () -> Lo
         save(previous.copy(started = started))
         return started
     }
+    @Synchronized fun linkedMatch(code: String): Pair<String, String>? {
+        val record = get(code)
+        return record.create.teamLinkId?.let { it to record.create.matchId }
+    }
+
     @Synchronized fun spectate(code: String, count: Int = 0): SpectatorView {
         val record = get(code)
         val score = record.state.officialScore()

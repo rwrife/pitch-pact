@@ -62,6 +62,25 @@ private let registryNoRedirect = RegistryNoRedirect()
 private struct RegistryTransport: Sendable {
     let endpoint: String
     let key: String?
+    /// Consensus bodies come from the KMP facade; never re-encode them as Swift strings.
+    func callRaw(_ method: String, _ path: String, body: String? = nil) async throws -> String {
+        guard let base = URL(string: endpoint), base.scheme == "https" ||
+            (base.scheme == "http" && ["localhost", "127.0.0.1"].contains(base.host ?? "")),
+              let url = URL(string: path, relativeTo: base)?.absoluteURL,
+              url.host == base.host, url.scheme == base.scheme else { throw URLError(.unsupportedURL) }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 10
+        if let key { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        if let body { request.httpBody = Data(body.utf8); request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        let session = URLSession(configuration: .ephemeral, delegate: registryNoRedirect, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw RegistryHTTPError(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
     func call<T: Decodable & Sendable, P: Encodable & Sendable>(
         _ method: String, _ path: String, body: P?
     ) async throws -> T {
@@ -187,6 +206,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                                 try await refresh(creds)
                             } }
                         }
+                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport)
                         DatePicker("Kickoff", selection: $kickoff)
                         TextField("Location", text: $location)
                         TextField("Home uniform", text: $homeUniform)
@@ -242,5 +262,97 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
         try AppTeamStore.shared.removeCoordinatedFixtures(ids: merged.removedFixtureIds)
         for loc in merged.locations { try AppTeamStore.shared.saveLocation(loc) }
         for game in merged.fixtures { try AppTeamStore.shared.saveFixture(game) }
+    }
+}
+
+/// M7 two-sideline scorer panel. Transport only: side mapping, wire bodies, labels,
+/// official-vs-pending text and ledger wording all come from the shared KMP facade.
+@MainActor private struct ConsensusSection: View {
+    let link: TeamLink
+    let myTeamId: String
+    let transport: RegistryTransport
+    @State private var matchId = ""
+    @State private var jersey = ""
+    @State private var snapshot = ""
+    @State private var message = ""
+    private let rules = ConsensusFacade()
+    private var side: String { (try? rules.sideFor(firstTeamId: link.firstTeamId, secondTeamId: link.secondTeamId, myTeamId: myTeamId)) ?? "HOME" }
+
+    var body: some View {
+        Group {
+            Text("Consensus scoring · \(side.lowercased()) sideline").font(.headline)
+            TextField("Match ID (shared fixture ID)", text: $matchId)
+                .textInputAutocapitalization(.never).accessibilityIdentifier("consensus.matchId")
+            TextField("Scorer jersey #", text: $jersey).keyboardType(.numberPad).accessibilityIdentifier("consensus.jersey")
+            Button("Submit goal for opponent review") { run {
+                let body = try rules.submitGoal(matchId: matchId, side: side, changeId: UUID().uuidString, eventId: UUID().uuidString,
+                    epoch: Int64(Date().timeIntervalSince1970 * 1000), jersey: Int32(jersey) ?? -1, idempotencyKey: UUID().uuidString)
+                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                try await refresh()
+            } }.disabled(matchId.isEmpty || jersey.isEmpty).accessibilityIdentifier("consensus.submit")
+            Button("Refresh official score") { run { try await refresh() } }.disabled(matchId.isEmpty)
+            if !snapshot.isEmpty {
+                Text((try? rules.scoreboard(snapshotJson: snapshot)) ?? "Scoreboard unavailable").accessibilityIdentifier("consensus.scoreboard")
+                // Own accepted goals may be removed or corrected — always as a NEW pending decision.
+                ForEach((try? rules.acceptedGoalRows(snapshotJson: snapshot, side: side)) ?? [], id: \.self) { row in
+                    let parts = row.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    if parts.count == 2 {
+                        let targetId = parts[0]
+                        HStack {
+                            Text("\(parts[1]) (your sideline)")
+                            Button("Remove") { run {
+                                let body = try rules.changeGoal(snapshotJson: snapshot, side: side, targetId: targetId,
+                                    action: "remove", changeId: UUID().uuidString, eventId: targetId, replacementId: targetId,
+                                    epoch: Int64(Date().timeIntervalSince1970 * 1000), jersey: -1,
+                                    idempotencyKey: UUID().uuidString)
+                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await refresh()
+                            } }.accessibilityIdentifier("consensus.remove")
+                            Button("Correct to #\(jersey)") { run {
+                                let replacementId = UUID().uuidString
+                                let body = try rules.changeGoal(snapshotJson: snapshot, side: side, targetId: targetId,
+                                    action: "correct", changeId: UUID().uuidString, eventId: UUID().uuidString,
+                                    replacementId: replacementId, epoch: Int64(Date().timeIntervalSince1970 * 1000),
+                                    jersey: Int32(jersey) ?? -1, idempotencyKey: UUID().uuidString)
+                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await refresh()
+                            } }.disabled(jersey.isEmpty).accessibilityIdentifier("consensus.correct")
+                        }
+                    }
+                }
+                ForEach((try? rules.pendingRows(snapshotJson: snapshot, mySide: side)) ?? [], id: \.self) { row in
+                    let parts = row.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                    if parts.count == 3 {
+                        Text(parts[1])
+                        if parts[2] == "review" {
+                            Button("Accept") { run { try await review(parts[0], "accept") } }.accessibilityIdentifier("consensus.accept")
+                            Button("Reject") { run { try await review(parts[0], "reject") } }.accessibilityIdentifier("consensus.reject")
+                        } else {
+                            Button("Withdraw") { run { try await review(parts[0], "withdraw") } }.accessibilityIdentifier("consensus.withdraw")
+                        }
+                    }
+                }
+                Button("Final whistle (both sides required)") { run {
+                    _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/whistle",
+                        body: rules.whistleBody(matchId: matchId, side: side, idempotencyKey: UUID().uuidString))
+                    try await refresh()
+                } }
+                Text("Record ledger (rejected and withdrawn changes are kept forever)").font(.caption.bold())
+                Text((try? rules.recordLedger(snapshotJson: snapshot)) ?? "").font(.caption).accessibilityIdentifier("consensus.ledger")
+            }
+            if !message.isEmpty { Text(message).foregroundStyle(.orange) }
+        }
+    }
+    private func run(_ work: @escaping @MainActor () async throws -> Void) {
+        Task { @MainActor in do { try await work(); message = "" } catch { message = error.localizedDescription } }
+    }
+    private func refresh() async throws {
+        guard matchId.range(of: "^[A-Za-z0-9:_-]{1,128}$", options: .regularExpression) != nil else { throw URLError(.badURL) }
+        snapshot = try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(matchId)")
+    }
+    private func review(_ changeId: String, _ action: String) async throws {
+        _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes/\(changeId)/\(action)",
+            body: rules.reviewBody(idempotencyKey: UUID().uuidString))
+        try await refresh()
     }
 }

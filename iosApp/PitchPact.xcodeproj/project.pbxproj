@@ -19,6 +19,8 @@ AA00000000000000000000B11 = {isa = PBXBuildFile; fileRef = AA0000000000000000000
 M50000000000000000000001 = {isa = PBXBuildFile; fileRef = M50000000000000000000002; };
 M50000000000000000000003 = {isa = PBXBuildFile; fileRef = M50000000000000000000004; };
 M60000000000000000000001 = {isa = PBXBuildFile; fileRef = M60000000000000000000002; };
+M70000000000000000000001 = {isa = PBXBuildFile; fileRef = M70000000000000000000002; };
+M70000000000000000000003 = {isa = PBXBuildFile; fileRef = M70000000000000000000004; };
 UI0000000000000000000001 = {isa = PBXBuildFile; fileRef = UI0000000000000000000002; };
 /* End PBXBuildFile section */
 
@@ -45,6 +47,8 @@ AA00000000000000000000A12 = {isa = PBXFileReference; lastKnownFileType = sourcec
 M50000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BroadcastControls.swift; sourceTree = "<group>"; };
 M50000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpectatorView.swift; sourceTree = "<group>"; };
 M60000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryView.swift; sourceTree = "<group>"; };
+M70000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsensusDemoView.swift; sourceTree = "<group>"; };
+M70000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactUITests/ConsensusJourney.swift; sourceTree = "<group>"; };
 UI0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactUITests/MatchDayJourney.swift; sourceTree = "<group>"; };
 UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = PitchPactUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -73,6 +77,7 @@ UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.c
 			isa = PBXGroup;
 			children = (
 				UI0000000000000000000002,
+				M70000000000000000000004,
                 AA00000000000000000000C3 /* PitchPact */,
 				AA00000000000000000000C5 /* PitchPactTests */,
 				AA00000000000000000000C4 /* Products */,
@@ -91,6 +96,7 @@ UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.c
                 M50000000000000000000002,
                 M50000000000000000000004,
                 M60000000000000000000002,
+                M70000000000000000000002,
 			);
 			path = PitchPact;
 			sourceTree = "<group>";
@@ -257,6 +263,7 @@ productType = "com.apple.product-type.bundle.ui-testing";
                 M50000000000000000000001,
                 M50000000000000000000003,
                 M60000000000000000000001,
+                M70000000000000000000001,
 				AA00000000000000000000B6 /* TeamsView.swift in Sources */,
 				AA00000000000000000000B1 /* PitchPactApp.swift in Sources */,
 				AA00000000000000000000B7 /* TeamDetailView.swift in Sources */,
@@ -271,7 +278,7 @@ productType = "com.apple.product-type.bundle.ui-testing";
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-UI0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (UI0000000000000000000001,); runOnlyForDeploymentPostprocessing = 0; };
+UI0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (UI0000000000000000000001, M70000000000000000000003,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
