@@ -166,4 +166,18 @@ struct PitchPactTests {
         #expect(awayRows[0].contains("Review:"))
         #expect(awayRows[0].hasSuffix("|review"))
     }
+
+    @MainActor
+    @Test("consensus outbox bridge preserves exact queued writes")
+    func consensusOutboxBridge() throws {
+        let rules = ConsensusFacade()
+        let first = try rules.outboxEnqueue(outboxJson: rules.outboxNew(), id: "one", path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"key-one\"}")
+        let queued = try rules.outboxEnqueue(outboxJson: first, id: "two", path: "/v0/links/L/consensus/changes/one/accept", body: "{\"idempotencyKey\":\"key-two\"}")
+        let entry = try rules.outboxHead(outboxJson: queued)
+        #expect(try rules.outboxId(entryJson: entry) == "one")
+        #expect(try rules.outboxPath(entryJson: entry).hasSuffix("/consensus/changes"))
+        #expect(try rules.outboxBody(entryJson: entry).contains("key-one"))
+        let refused = try rules.outboxRefuse(outboxJson: queued, id: "one", status: 409)
+        #expect(try rules.outboxSummary(outboxJson: refused) == "1 waiting to send · 1 refused by server")
+    }
 }
