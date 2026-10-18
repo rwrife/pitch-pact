@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Security
 import SwiftUI
 import PitchPactStore
@@ -77,9 +78,15 @@ private struct RegistryTransport: Sendable {
         defer { session.invalidateAndCancel() }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw RegistryHTTPError(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
+            throw RegistryHTTPError(code: (response as? HTTPURLResponse)?.statusCode ?? -1)
         }
         return String(decoding: data, as: UTF8.self)
+    }
+    /// HTTP status for outbox policy: connection/transport failure is zero (retry, never refuse).
+    func statusOf(_ method: String, _ path: String, body: String?) async -> Int {
+        do { _ = try await callRaw(method, path, body: body); return 200 }
+        catch let error as RegistryHTTPError { return error.code }
+        catch { return -1 }
     }
     func call<T: Decodable & Sendable, P: Encodable & Sendable>(
         _ method: String, _ path: String, body: P?
@@ -104,6 +111,25 @@ private struct RegistryTransport: Sendable {
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
+private enum ConsensusOutboxStore {
+    static func load(_ endpoint: String, _ link: String, _ team: String) -> String? {
+        guard let url = fileURL(endpoint, link, team),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+    static func save(_ endpoint: String, _ link: String, _ team: String, _ json: String) throws {
+        guard let url = fileURL(endpoint, link, team) else { throw CocoaError(.fileWriteUnknown) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: url, options: .atomic)
+    }
+    private static func fileURL(_ endpoint: String, _ link: String, _ team: String) -> URL? {
+        let raw = "\(endpoint)|\(link)|\(team)"
+        let digest = SHA256.hash(data: Data(raw.utf8)).map { String(format: "%02x", $0) }.joined()
+        guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        return dir.appendingPathComponent("pitchpact/consensus-\(digest).json")
+    }
+}
+
 private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescription: String? { "Registry HTTP \(code)" } }
 
 @MainActor struct RegistryView: View {
@@ -206,7 +232,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                                 try await refresh(creds)
                             } }
                         }
-                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport)
+                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint)
                         DatePicker("Kickoff", selection: $kickoff)
                         TextField("Location", text: $location)
                         TextField("Home uniform", text: $homeUniform)
@@ -271,23 +297,28 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     let link: TeamLink
     let myTeamId: String
     let transport: RegistryTransport
+    let endpoint: String
     @State private var matchId = ""
     @State private var jersey = ""
     @State private var snapshot = ""
     @State private var message = ""
+    @State private var outbox = ""
     private let rules = ConsensusFacade()
     private var side: String { (try? rules.sideFor(firstTeamId: link.firstTeamId, secondTeamId: link.secondTeamId, myTeamId: myTeamId)) ?? "HOME" }
 
     var body: some View {
         Group {
             Text("Consensus scoring · \(side.lowercased()) sideline").font(.headline)
+            if !outbox.isEmpty {
+                Text("Offline outbox: \((try? rules.outboxSummary(outboxJson: outbox)) ?? "unavailable")").accessibilityIdentifier("consensus.outbox")
+            }
             TextField("Match ID (shared fixture ID)", text: $matchId)
                 .textInputAutocapitalization(.never).accessibilityIdentifier("consensus.matchId")
             TextField("Scorer jersey #", text: $jersey).keyboardType(.numberPad).accessibilityIdentifier("consensus.jersey")
             Button("Submit goal for opponent review") { run {
                 let body = try rules.submitGoal(matchId: matchId, side: side, changeId: UUID().uuidString, eventId: UUID().uuidString,
                     epoch: Int64(Date().timeIntervalSince1970 * 1000), jersey: Int32(jersey) ?? -1, idempotencyKey: UUID().uuidString)
-                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                try await send("/v0/links/\(link.id)/consensus/changes", body)
                 try await refresh()
             } }.disabled(matchId.isEmpty || jersey.isEmpty).accessibilityIdentifier("consensus.submit")
             Button("Refresh official score") { run { try await refresh() } }.disabled(matchId.isEmpty)
@@ -305,7 +336,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                                     action: "remove", changeId: UUID().uuidString, eventId: targetId, replacementId: targetId,
                                     epoch: Int64(Date().timeIntervalSince1970 * 1000), jersey: -1,
                                     idempotencyKey: UUID().uuidString)
-                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await send("/v0/links/\(link.id)/consensus/changes", body)
                                 try await refresh()
                             } }.accessibilityIdentifier("consensus.remove")
                             Button("Correct to #\(jersey)") { run {
@@ -314,7 +345,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                                     action: "correct", changeId: UUID().uuidString, eventId: UUID().uuidString,
                                     replacementId: replacementId, epoch: Int64(Date().timeIntervalSince1970 * 1000),
                                     jersey: Int32(jersey) ?? -1, idempotencyKey: UUID().uuidString)
-                                _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes", body: body)
+                                try await send("/v0/links/\(link.id)/consensus/changes", body)
                                 try await refresh()
                             } }.disabled(jersey.isEmpty).accessibilityIdentifier("consensus.correct")
                         }
@@ -333,8 +364,8 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                     }
                 }
                 Button("Final whistle (both sides required)") { run {
-                    _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/whistle",
-                        body: rules.whistleBody(matchId: matchId, side: side, idempotencyKey: UUID().uuidString))
+                    try await send("/v0/links/\(link.id)/consensus/whistle",
+                        rules.whistleBody(matchId: matchId, side: side, idempotencyKey: UUID().uuidString))
                     try await refresh()
                 } }
                 Text("Record ledger (rejected and withdrawn changes are kept forever)").font(.caption.bold())
@@ -342,17 +373,47 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
             }
             if !message.isEmpty { Text(message).foregroundStyle(.orange) }
         }
+        .onAppear { try? loadOutbox() }
     }
     private func run(_ work: @escaping @MainActor () async throws -> Void) {
         Task { @MainActor in do { try await work(); message = "" } catch { message = error.localizedDescription } }
     }
+    /// Commit to the durable outbox BEFORE the first network attempt; replays reuse the same body/key.
+    private func send(_ path: String, _ body: String) async throws {
+        try loadOutbox()
+        let next = try rules.outboxEnqueue(outboxJson: outbox, id: UUID().uuidString, path: path, body: body)
+        try ConsensusOutboxStore.save(endpoint, link.id, myTeamId, next)
+        outbox = next
+        await flush()
+    }
+    private func loadOutbox() throws {
+        if outbox.isEmpty { outbox = ConsensusOutboxStore.load(endpoint, link.id, myTeamId) ?? rules.outboxNew() }
+    }
+    private func flush() async {
+        while true {
+            guard let entry = try? rules.outboxHead(outboxJson: outbox), !entry.isEmpty,
+                  let id = try? rules.outboxId(entryJson: entry), let path = try? rules.outboxPath(entryJson: entry),
+                  let body = try? rules.outboxBody(entryJson: entry) else { return }
+            let status = await transport.statusOf("POST", path, body: body)
+            let next: String?
+            switch status {
+            case 200...299: next = try? rules.outboxDelivered(outboxJson: outbox, id: id)
+            case 400...499: next = try? rules.outboxRefuse(outboxJson: outbox, id: id, status: Int32(status))
+            default: return // offline/server failure: exact body and key retained for retry
+            }
+            guard let next, (try? ConsensusOutboxStore.save(endpoint, link.id, myTeamId, next)) != nil else { return }
+            outbox = next
+        }
+    }
     private func refresh() async throws {
+        try loadOutbox()
+        await flush()
         guard matchId.range(of: "^[A-Za-z0-9:_-]{1,128}$", options: .regularExpression) != nil else { throw URLError(.badURL) }
         snapshot = try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(matchId)")
     }
     private func review(_ changeId: String, _ action: String) async throws {
-        _ = try await transport.callRaw("POST", "/v0/links/\(link.id)/consensus/changes/\(changeId)/\(action)",
-            body: rules.reviewBody(idempotencyKey: UUID().uuidString))
+        try await send("/v0/links/\(link.id)/consensus/changes/\(changeId)/\(action)",
+            rules.reviewBody(idempotencyKey: UUID().uuidString))
         try await refresh()
     }
 }

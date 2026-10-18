@@ -67,7 +67,19 @@ class ConsensusIntegrationTest {
         val link = client.link(home, away, "contested-link-idempotency-01")
         val match = "fixture-contested"
 
+        // An idempotency receipt is scoped to the signing sideline. Neither team can replay
+        // the other's submit or accept receipt using the same key and payload.
+        val guardedBody = facade.submitGoal(match, "HOME", "guarded-change", "guarded-event", clock, 9, "guarded-submit-key-0001")
+        val guardedPath = "/v0/links/${link.id}/consensus/changes"
+        assertEquals(HttpStatusCode.OK, client.send(guardedPath, guardedBody, home.ownerKey).status)
+        assertEquals(HttpStatusCode.Conflict, client.send(guardedPath, guardedBody, away.ownerKey).status)
+        val guardedReview = facade.reviewBody("guarded-review-key-0001")
+        assertEquals(HttpStatusCode.OK, client.send("/v0/links/${link.id}/consensus/changes/guarded-change/reject", guardedReview, away.ownerKey).status)
+        assertEquals(HttpStatusCode.Conflict, client.send("/v0/links/${link.id}/consensus/changes/guarded-change/reject", guardedReview, home.ownerKey).status)
+        assertEquals(ConsensusState.REJECTED, client.snapshot(link, home.ownerKey, match).decisions.single().state)
+
         // One scripted action per line: side, jersey, then response ("accept"/"reject"/"withdraw").
+        val initialRecords = 1
         val script = listOf(
             Triple(Side.HOME, 9, "accept"), Triple(Side.AWAY, 11, "reject"),
             Triple(Side.AWAY, 11, "withdraw"), Triple(Side.AWAY, 11, "reject"),
@@ -91,7 +103,7 @@ class ConsensusIntegrationTest {
             snap = client.snapshot(link, home.ownerKey, match)
             assertOfficialMatchesAcceptedLedger(snap, "after $response $sequence")
             assertTrue(snap.pendingChanges.isEmpty(), "no pending may survive action $sequence")
-            assertEquals(sequence, snap.decisions.size, "every outcome stays in the record ledger")
+            assertEquals(initialRecords + sequence, snap.decisions.size, "every outcome stays in the record ledger")
         }
         // 3 accepted goals (two home, one away): the scoreboard must read the ledger, never raw submissions.
         assertEquals(2 to 1, acceptedScore(client.snapshot(link, home.ownerKey, match)))
@@ -105,7 +117,7 @@ class ConsensusIntegrationTest {
         final = client.snapshot(link, home.ownerKey, match)
         assertTrue(final.official)
         assertOfficialMatchesAcceptedLedger(final, "after both whistles")
-        assertEquals(listOf("ACCEPTED", "REJECTED", "WITHDRAWN", "REJECTED", "ACCEPTED", "WITHDRAWN", "ACCEPTED"),
+        assertEquals(listOf("REJECTED", "ACCEPTED", "REJECTED", "WITHDRAWN", "REJECTED", "ACCEPTED", "WITHDRAWN", "ACCEPTED"),
             final.decisions.map { it.state.name })
     }
 

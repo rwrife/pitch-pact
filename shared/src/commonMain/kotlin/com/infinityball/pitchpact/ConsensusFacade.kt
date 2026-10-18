@@ -96,6 +96,30 @@ class ConsensusFacade {
         }.ifEmpty { "No consensus records" }
     }
 
+    // ---- Durable outbox: native layers persist the opaque JSON, shared owns every rule ----------
+    fun outboxNew(): String = json.encodeToString(ConsensusOutbox.serializer(), ConsensusOutbox())
+    @Throws(IllegalArgumentException::class)
+    fun outboxEnqueue(outboxJson: String, id: String, path: String, body: String): String =
+        encodeOutbox(decodeOutbox(outboxJson).enqueue(OutboxEntry(id, path, body)))
+    /** Head entry as JSON (`OutboxEntry`), or empty string when nothing is waiting. */
+    @Throws(IllegalArgumentException::class)
+    fun outboxHead(outboxJson: String): String =
+        decodeOutbox(outboxJson).head()?.let { json.encodeToString(OutboxEntry.serializer(), it) } ?: ""
+    @Throws(IllegalArgumentException::class)
+    fun outboxDelivered(outboxJson: String, id: String): String = encodeOutbox(decodeOutbox(outboxJson).delivered(id))
+    @Throws(IllegalArgumentException::class)
+    fun outboxRefuse(outboxJson: String, id: String, status: Int): String = encodeOutbox(decodeOutbox(outboxJson).refuse(id, status))
+    @Throws(IllegalArgumentException::class)
+    fun outboxSummary(outboxJson: String): String = decodeOutbox(outboxJson).summary()
+    @Throws(IllegalArgumentException::class)
+    fun outboxPath(entryJson: String): String = json.decodeFromString(OutboxEntry.serializer(), entryJson).path
+    @Throws(IllegalArgumentException::class)
+    fun outboxBody(entryJson: String): String = json.decodeFromString(OutboxEntry.serializer(), entryJson).body
+    @Throws(IllegalArgumentException::class)
+    fun outboxId(entryJson: String): String = json.decodeFromString(OutboxEntry.serializer(), entryJson).id
+    private fun decodeOutbox(s: String) = json.decodeFromString(ConsensusOutbox.serializer(), s)
+    private fun encodeOutbox(o: ConsensusOutbox) = json.encodeToString(ConsensusOutbox.serializer(), o)
+
     // ---- Offline two-sideline demo book (XCUITest surface) --------------------------------
     // Same ConsensusBook rules the server runs, in-process and transport-free so
     // the native submit/accept journey can drive them on-device. `bookJson` is a

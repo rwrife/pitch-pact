@@ -26,7 +26,9 @@ import java.util.UUID
  * rotate, confirm-before-show) lives in `shared` + `server`; this class just moves
  * shared DTOs over HTTPS to the user's self-hosted instance.
  */
-class RegistryClient(private val base: String) {
+class RegistryStatus(val code: Int) : Exception("Registry HTTP $code")
+
+class RegistryClient(val base: String) {
     private val json = PitchPactJson.codec
     private fun checked(): String {
         val b = base.trimEnd('/')
@@ -48,13 +50,19 @@ class RegistryClient(private val base: String) {
                     conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 }
                 val code = conn.responseCode
-                if (code !in 200..299) error("Registry HTTP $code")
+                if (code !in 200..299) throw RegistryStatus(code)
                 conn.inputStream.bufferedReader().use { it.readText() }
             } finally { conn.disconnect() }
         }
     /** Raw JSON transport for the consensus panel; DTO parsing and wording stay in shared ConsensusFacade. */
     suspend fun raw(method: String, path: String, key: String, body: String?): String =
         withContext(Dispatchers.IO) { call(method, path, key, body) }
+    /** HTTP status only for outbox policy; a failed connection or unavailable transport is zero. */
+    suspend fun statusOf(method: String, path: String, key: String, body: String?): Int = withContext(Dispatchers.IO) {
+        try { call(method, path, key, body); 200 }
+        catch (e: RegistryStatus) { e.code }
+        catch (e: Exception) { 0 }
+    }
     private suspend fun <T> one(method: String, path: String, key: String?, body: String?, s: KSerializer<T>): T =
         withContext(Dispatchers.IO) { json.decodeFromString(s, call(method, path, key, body)) }
     private suspend fun many(path: String, key: String?, s: KSerializer<*>): List<*> =

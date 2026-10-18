@@ -272,7 +272,7 @@ class RegistryRepository(private val directory: Path, private val now: () -> Lon
 
     @Synchronized fun submitConsensus(linkId: String, key: String, submit: ConsensusSubmit): ConsensusDecision {
         val (link, party) = activeLink(linkId, key)
-        val fp = fingerprint("$linkId|submit|${json.encodeToString(ConsensusSubmit.serializer(), submit.copy(idempotencyKey = ""))}")
+        val fp = fingerprint("$linkId|$party|submit|${json.encodeToString(ConsensusSubmit.serializer(), submit.copy(idempotencyKey = ""))}")  // Replays must retain original sideline.
         replayConsensus(submit.idempotencyKey, fp)?.let {
             return json.decodeFromString(ConsensusDecision.serializer(), it)
         }
@@ -300,7 +300,7 @@ class RegistryRepository(private val directory: Path, private val now: () -> Lon
         linkId: String, changeId: String, key: String, action: ConsensusAction, idempotencyKey: String,
     ): ConsensusDecision {
         val (link, party) = activeLink(linkId, key)
-        val fp = fingerprint("$linkId|review|$changeId|${action.name}")
+        val fp = fingerprint("$linkId|$party|review|$changeId|${action.name}")  // A different sideline cannot replay the original decision.
         replayConsensus(idempotencyKey, fp)?.let {
             return json.decodeFromString(ConsensusDecision.serializer(), it)
         }
