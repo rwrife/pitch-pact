@@ -35,16 +35,22 @@ fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, own
     var ledger by remember { mutableStateOf("") }
     var message by remember { mutableStateOf("") }
     var outbox by remember(client.base, link.id, myTeamId) { mutableStateOf("") }
+    var outboxFailed by remember(client.base, link.id, myTeamId) { mutableStateOf(false) }
+    // A queue that cannot be read or written is a hard stop: queued consensus writes must
+    // never be silently skipped or replaced (restart-replay contract).
     fun loadOutbox() {
-        if (outbox.isEmpty()) outbox = outboxStore.load(client.base, link.id, myTeamId) ?: facade.outboxNew()
+        check(!outboxFailed) { "Outbox unreadable; recover the device file before scoring" }
+        try { if (outbox.isEmpty()) outbox = outboxStore.load(client.base, link.id, myTeamId) ?: facade.outboxNew() }
+        catch (e: Exception) { outboxFailed = true; throw e }
     }
     fun persist(value: String) {
-        outboxStore.save(client.base, link.id, myTeamId, value)
-        outbox = value
+        try { outboxStore.save(client.base, link.id, myTeamId, value); outbox = value }
+        // In-memory copy may now diverge from disk: drop it and reload from the file.
+        catch (e: Exception) { outbox = ""; outboxFailed = true; throw e }
     }
     LaunchedEffect(client.base, link.id, myTeamId) {
         try { outbox = outboxStore.load(client.base, link.id, myTeamId) ?: facade.outboxNew() }
-        catch (e: Exception) { message = "Outbox unreadable; recover the device file before scoring" }
+        catch (e: Exception) { outboxFailed = true }
     }
     suspend fun flush() {
         loadOutbox()
@@ -74,7 +80,8 @@ fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, own
     }
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Column(Modifier.padding(8.dp)) {
         Text("Consensus scoring · you are the ${side.lowercase()} sideline", style = MaterialTheme.typography.titleSmall)
-        if (outbox.isNotEmpty()) Text("Offline outbox: ${facade.outboxSummary(outbox)}", modifier = Modifier.semantics { testTag = "consensus.outbox" })
+        if (outboxFailed) Text("Offline outbox: unreadable — scoring stopped", modifier = Modifier.semantics { testTag = "consensus.outbox" })
+        else if (outbox.isNotEmpty()) Text("Offline outbox: ${facade.outboxSummary(outbox)}", modifier = Modifier.semantics { testTag = "consensus.outbox" })
         OutlinedTextField(matchId, { matchId = it.trim() }, label = { Text("Match ID (shared fixture ID)") }, modifier = Modifier.semantics { testTag = "consensus.matchId" })
         OutlinedTextField(jersey, { jersey = it.filter(Char::isDigit).take(2) }, label = { Text("Scorer jersey #") }, modifier = Modifier.semantics { testTag = "consensus.jersey" })
         Button(enabled = matchId.isNotEmpty() && jersey.isNotEmpty(), onClick = { run {

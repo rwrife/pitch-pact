@@ -112,10 +112,12 @@ private struct RegistryTransport: Sendable {
     }
 }
 private enum ConsensusOutboxStore {
-    static func load(_ endpoint: String, _ link: String, _ team: String) -> String? {
-        guard let url = fileURL(endpoint, link, team),
-              let data = try? Data(contentsOf: url) else { return nil }
-        return String(decoding: data, as: UTF8.self)
+    static func load(_ endpoint: String, _ link: String, _ team: String) throws -> String? {
+        guard let url = fileURL(endpoint, link, team) else { throw CocoaError(.fileReadUnknown) }
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
+        guard let text = String(data: data, encoding: .utf8) else { throw CocoaError(.fileReadCorruptFile) }
+        return text
     }
     static func save(_ endpoint: String, _ link: String, _ team: String, _ json: String) throws {
         guard let url = fileURL(endpoint, link, team) else { throw CocoaError(.fileWriteUnknown) }
@@ -233,6 +235,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                             } }
                         }
                         ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint)
+                            .id("\(endpoint)|\(link.id)|\(creds.team.id)")
                         DatePicker("Kickoff", selection: $kickoff)
                         TextField("Location", text: $location)
                         TextField("Home uniform", text: $homeUniform)
@@ -303,13 +306,17 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     @State private var snapshot = ""
     @State private var message = ""
     @State private var outbox = ""
+    @State private var outboxLoaded = false
+    @State private var outboxStatus = ""
     private let rules = ConsensusFacade()
     private var side: String { (try? rules.sideFor(firstTeamId: link.firstTeamId, secondTeamId: link.secondTeamId, myTeamId: myTeamId)) ?? "HOME" }
 
     var body: some View {
         Group {
             Text("Consensus scoring · \(side.lowercased()) sideline").font(.headline)
-            if !outbox.isEmpty {
+            if !outboxStatus.isEmpty {
+                Text("Offline outbox: \(outboxStatus)").accessibilityIdentifier("consensus.outbox")
+            } else if !outbox.isEmpty {
                 Text("Offline outbox: \((try? rules.outboxSummary(outboxJson: outbox)) ?? "unavailable")").accessibilityIdentifier("consensus.outbox")
             }
             TextField("Match ID (shared fixture ID)", text: $matchId)
@@ -373,41 +380,57 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
             }
             if !message.isEmpty { Text(message).foregroundStyle(.orange) }
         }
-        .onAppear { try? loadOutbox() }
+        .onAppear {
+            do { try loadOutbox() }
+            catch { message = error.localizedDescription }
+        }
     }
     private func run(_ work: @escaping @MainActor () async throws -> Void) {
         Task { @MainActor in do { try await work(); message = "" } catch { message = error.localizedDescription } }
     }
     /// Commit to the durable outbox BEFORE the first network attempt; replays reuse the same body/key.
+    /// A queue that cannot be read or written is a hard stop: queued consensus writes must never
+    /// be silently skipped or replaced (restart-replay contract).
     private func send(_ path: String, _ body: String) async throws {
         try loadOutbox()
         let next = try rules.outboxEnqueue(outboxJson: outbox, id: UUID().uuidString, path: path, body: body)
         try ConsensusOutboxStore.save(endpoint, link.id, myTeamId, next)
         outbox = next
-        await flush()
+        try await flush()
     }
     private func loadOutbox() throws {
-        if outbox.isEmpty { outbox = ConsensusOutboxStore.load(endpoint, link.id, myTeamId) ?? rules.outboxNew() }
+        guard !outboxLoaded else { return }
+        do {
+            outbox = try ConsensusOutboxStore.load(endpoint, link.id, myTeamId) ?? rules.outboxNew()
+            outboxStatus = ""
+            outboxLoaded = true
+        } catch {
+            outboxStatus = "unreadable — scoring stopped"
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey:
+                "Consensus outbox unreadable; restore the device file before scoring"])
+        }
     }
-    private func flush() async {
+    private func flush() async throws {
         while true {
-            guard let entry = try? rules.outboxHead(outboxJson: outbox), !entry.isEmpty,
-                  let id = try? rules.outboxId(entryJson: entry), let path = try? rules.outboxPath(entryJson: entry),
-                  let body = try? rules.outboxBody(entryJson: entry) else { return }
+            let entry = try rules.outboxHead(outboxJson: outbox)
+            if entry.isEmpty { return }
+            let id = try rules.outboxId(entryJson: entry)
+            let path = try rules.outboxPath(entryJson: entry)
+            let body = try rules.outboxBody(entryJson: entry)
             let status = await transport.statusOf("POST", path, body: body)
-            let next: String?
+            let next: String
             switch status {
-            case 200...299: next = try? rules.outboxDelivered(outboxJson: outbox, id: id)
-            case 400...499: next = try? rules.outboxRefuse(outboxJson: outbox, id: id, status: Int32(status))
+            case 200...299: next = try rules.outboxDelivered(outboxJson: outbox, id: id)
+            case 400...499: next = try rules.outboxRefuse(outboxJson: outbox, id: id, status: Int32(status))
             default: return // offline/server failure: exact body and key retained for retry
             }
-            guard let next, (try? ConsensusOutboxStore.save(endpoint, link.id, myTeamId, next)) != nil else { return }
+            try ConsensusOutboxStore.save(endpoint, link.id, myTeamId, next)
             outbox = next
         }
     }
     private func refresh() async throws {
         try loadOutbox()
-        await flush()
+        try await flush()
         guard matchId.range(of: "^[A-Za-z0-9:_-]{1,128}$", options: .regularExpression) != nil else { throw URLError(.badURL) }
         snapshot = try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(matchId)")
     }

@@ -180,4 +180,34 @@ struct PitchPactTests {
         let refused = try rules.outboxRefuse(outboxJson: queued, id: "one", status: 409)
         #expect(try rules.outboxSummary(outboxJson: refused) == "1 waiting to send · 1 refused by server")
     }
+
+    @MainActor
+    @Test("restart replays the exact bytes and order the pre-crash app queued")
+    func consensusOutboxRestartReplay() throws {
+        let rules = ConsensusFacade()
+        // Pre-crash session: queue three writes and deliver only the first.
+        let one = try rules.outboxEnqueue(outboxJson: rules.outboxNew(), id: "a",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"k-a\",\"jersey\":9}")
+        let two = try rules.outboxEnqueue(outboxJson: one, id: "b",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"k-b\",\"jersey\":10}")
+        let three = try rules.outboxEnqueue(outboxJson: two, id: "c",
+            path: "/v0/links/L/consensus/changes/a/accept", body: "{\"idempotencyKey\":\"k-c\"}")
+        let crashed = try rules.outboxDelivered(outboxJson: three, id: "a")
+
+        // Process death: only the persisted string survives. A fresh facade must
+        // resume the queue byte-for-byte, in order, duplicates ignored.
+        let revived = try rules.outboxEnqueue(outboxJson: crashed, id: "b",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"tampered\"}")
+        let head = try rules.outboxHead(outboxJson: revived)
+        #expect(try rules.outboxId(entryJson: head) == "b")
+        #expect(try rules.outboxBody(entryJson: head).contains("k-b"))
+        #expect(try rules.outboxSummary(outboxJson: revived) == "2 waiting to send")
+        let after = try rules.outboxDelivered(outboxJson: revived, id: "b")
+        let next = try rules.outboxHead(outboxJson: after)
+        #expect(try rules.outboxId(entryJson: next) == "c")
+        #expect(try rules.outboxPath(entryJson: next).hasSuffix("/consensus/changes/a/accept"))
+        // Only the head may be delivered — out-of-order replay is refused loudly.
+        do { _ = try rules.outboxDelivered(outboxJson: after, id: "b"); Issue.record("expected head-only delivery") }
+        catch { /* @Throws bridges to NSError: refusal is the expected path */ }
+    }
 }
