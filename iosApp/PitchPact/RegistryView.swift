@@ -247,36 +247,48 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     }
     @ViewBuilder private func linksSections(_ creds: Credentials) -> some View {
         ForEach(links.filter { $0.state == "active" }, id: \.id) { link in
+            linkedSection(link, creds: creds)
+        }
+    }
+    @ViewBuilder private func linkedSection(_ link: TeamLink, creds: Credentials) -> some View {
             Section("Linked · \(link.id)") {
                 Button("Review fixture proposals") { run { proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none) } }
-                ForEach(proposals.filter { $0.linkId == link.id && $0.state == "proposed" }) { fixture in
-                    Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
-                    Text("Home: \(fixture.homeUniform) · Away: \(fixture.awayUniform)")
-                    Button("Confirm fixture") { run {
-                        let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures/\(fixture.id)/confirm", body: Optional<Int>.none)
-                        proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
-                        try await refresh(creds)
-                    } }
-                }
-                ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint,
-                                 onSnapshot: { raw in try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: [raw]) })
-                    .id("\(endpoint)|\(link.id)|\(creds.team.id)")
-                DatePicker("Kickoff", selection: $kickoff)
-                TextField("Location", text: $location)
-                TextField("Home uniform", text: $homeUniform)
-                TextField("Away uniform", text: $awayUniform)
-                Button("Propose fixture (needs both confirms)") { run {
-                    let proposal = Propose(startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
-                        location: location, homeUniform: homeUniform, awayUniform: awayUniform,
-                        idempotencyKey: UUID().uuidString)
-                    let text = String(decoding: try JSONEncoder().encode(proposal), as: UTF8.self)
-                    let verdict = rules.validateProposal(payload: text, now: Int64(Date().timeIntervalSince1970 * 1000))
-                    guard verdict == "OK" else { throw RegistryHTTPError(code: 400) }
-                    let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures", body: proposal)
-                    proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
-                } }
+                proposalRows(link, creds: creds)
+                scorerSection(link, creds: creds)
+                proposalForm(link)
             }
+    }
+    @ViewBuilder private func proposalRows(_ link: TeamLink, creds: Credentials) -> some View {
+        ForEach(proposals.filter { $0.linkId == link.id && $0.state == "proposed" }) { fixture in
+            Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
+            Text("Home: \(fixture.homeUniform) · Away: \(fixture.awayUniform)")
+            Button("Confirm fixture") { run {
+                let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures/\(fixture.id)/confirm", body: Optional<Int>.none)
+                proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
+                try await refresh(creds)
+            } }
         }
+    }
+    private func scorerSection(_ link: TeamLink, creds: Credentials) -> some View {
+        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint,
+                         onSnapshot: { raw in try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: [raw]) })
+            .id("\(endpoint)|\(link.id)|\(creds.team.id)")
+    }
+    @ViewBuilder private func proposalForm(_ link: TeamLink) -> some View {
+        DatePicker("Kickoff", selection: $kickoff)
+        TextField("Location", text: $location)
+        TextField("Home uniform", text: $homeUniform)
+        TextField("Away uniform", text: $awayUniform)
+        Button("Propose fixture (needs both confirms)") { run {
+            let proposal = Propose(startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
+                location: location, homeUniform: homeUniform, awayUniform: awayUniform,
+                idempotencyKey: UUID().uuidString)
+            let text = String(decoding: try JSONEncoder().encode(proposal), as: UTF8.self)
+            let verdict = rules.validateProposal(payload: text, now: Int64(Date().timeIntervalSince1970 * 1000))
+            guard verdict == "OK" else { throw RegistryHTTPError(code: 400) }
+            let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures", body: proposal)
+            proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
+        } }
     }
     @ViewBuilder private func scheduleSection(_ creds: Credentials) -> some View {
         Section("Coordinated schedule") {
@@ -341,7 +353,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     let myTeamId: String
     let transport: RegistryTransport
     let endpoint: String
-    var onSnapshot: (String) -> Void = { _ in }
+    var onSnapshot: (String) throws -> Void = { _ in }
     @State private var matchId = ""
     @State private var jersey = ""
     @State private var snapshot = ""
@@ -475,7 +487,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
         guard matchId.range(of: "^[A-Za-z0-9:_-]{1,128}$", options: .regularExpression) != nil else { throw URLError(.badURL) }
         snapshot = try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(matchId)")
         // Accepted-only official state also feeds the local schedule/standings (shared KMP rule).
-        onSnapshot(snapshot)
+        try onSnapshot(snapshot)
     }
     private func review(_ changeId: String, _ action: String) async throws {
         try await send("/v0/links/\(link.id)/consensus/changes/\(changeId)/\(action)",
