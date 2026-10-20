@@ -2,7 +2,11 @@ package com.infinityball.pitchpact
 
 import com.infinityball.pitchpact.domain.Coordination
 import com.infinityball.pitchpact.domain.Fixture
-import com.infinityball.pitchpact.dto.*
+import com.infinityball.pitchpact.dto.ConsensusSnapshot
+import com.infinityball.pitchpact.dto.CoordinatedFixture
+import com.infinityball.pitchpact.dto.FixtureProposal
+import com.infinityball.pitchpact.dto.PitchPactJson
+import kotlinx.serialization.builtins.ListSerializer
 
 /** Platform bridge: both native clients consume identical KMP wire + fixture rules. */
 class CoordinationFacade {
@@ -20,4 +24,11 @@ class CoordinationFacade {
             teamId,
             json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Fixture.serializer()), existingFixturesJson),
         ).toJson()
+    fun applyConsensus(fixturesJson: String, linkId: String, linkHomeTeamId: String, snapshotsJson: String): String =
+        json.encodeToString(kotlinx.serialization.builtins.ListSerializer(Fixture.serializer()), Coordination.applyResults(
+            json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Fixture.serializer()), fixturesJson),
+            linkId,
+            linkHomeTeamId,
+            json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(ConsensusSnapshot.serializer()), snapshotsJson),
+        ))
 }

@@ -23,7 +23,7 @@ import java.util.UUID
  * and the pending band are always rendered separately.
  */
 @Composable
-fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, ownerKey: String) {
+fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, ownerKey: String, onSnapshot: (String) -> Unit = {}) {
     val facade = remember { ConsensusFacade() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -77,6 +77,8 @@ fun ConsensusPanel(client: RegistryClient, link: LinkView, myTeamId: String, own
         require(matchId.matches(Regex("[A-Za-z0-9:_-]{1,128}"))) { "Match ID must be 1-128 letters, digits, colon, underscore, or hyphen" }
         snapshot = client.raw("GET", "/v0/links/${link.id}/consensus?matchId=$matchId", ownerKey, null)
         ledger = facade.recordLedger(snapshot)
+        // Accepted-only official state also feeds the local schedule/standings.
+        onSnapshot(snapshot)
     }
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Column(Modifier.padding(8.dp)) {
         Text("Consensus scoring · you are the ${side.lowercase()} sideline", style = MaterialTheme.typography.titleSmall)

@@ -234,7 +234,8 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                                 try await refresh(creds)
                             } }
                         }
-                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint)
+                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint,
+                                         onSnapshot: { raw in try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: [raw]) })
                             .id("\(endpoint)|\(link.id)|\(creds.team.id)")
                         DatePicker("Kickoff", selection: $kickoff)
                         TextField("Location", text: $location)
@@ -257,6 +258,15 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
                     Button("Sync confirmed games locally") { run {
                         schedule = try await transport.call("GET", "/v0/registry/teams/\(creds.team.id)/schedule", body: Optional<Int>.none)
                         try syncLocal(schedule, teamId: creds.team.id)
+                        for link in links where link.state == "active" {
+                            var raws: [String] = []
+                            for fixture in schedule where fixture.linkId == link.id {
+                                // 404 = no ledger yet for this fixture; anything else surfaces.
+                                do { raws.append(try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(fixture.id)")) }
+                                catch let error as RegistryHTTPError where error.code == 404 { continue }
+                            }
+                            try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: raws)
+                        }
                     } }
                     ForEach(schedule) { fixture in
                         Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
@@ -282,6 +292,19 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
         links = try await transport.call("GET", "/v0/registry/teams/\(c.team.id)/links", body: Optional<Int>.none)
         schedule = try await transport.call("GET", "/v0/registry/teams/\(c.team.id)/schedule", body: Optional<Int>.none)
     }
+    /// Official results come only from the shared KMP rule over server snapshots (accepted-only).
+    private func applyConsensus(linkId: String, linkHomeTeamId: String, snapshots: [String]) throws {
+        guard !snapshots.isEmpty else { return }
+        let current = try AppTeamStore.shared.fixtures().filter { $0.coordinatedLinkId == linkId }
+        let currentJSON = String(decoding: try JSONEncoder().encode(current), as: UTF8.self)
+        let updated = rules.applyConsensus(fixturesJson: currentJSON, linkId: linkId, linkHomeTeamId: linkHomeTeamId,
+                                           snapshotsJson: "[" + snapshots.joined(separator: ",") + "]")
+        let games = try JSONDecoder().decode([PitchPactStore.Fixture].self, from: Data(updated.utf8))
+        for (before, after) in zip(current, games)
+        where before.resultStatus != after.resultStatus || before.officialHome != after.officialHome || before.officialAway != after.officialAway {
+            try AppTeamStore.shared.saveFixture(after)
+        }
+    }
     private func syncLocal(_ incoming: [SharedFixture], teamId: String) throws {
         let current = try AppTeamStore.shared.fixtures()
         let incomingJSON = String(decoding: try JSONEncoder().encode(incoming), as: UTF8.self)
@@ -301,6 +324,7 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     let myTeamId: String
     let transport: RegistryTransport
     let endpoint: String
+    var onSnapshot: (String) -> Void = { _ in }
     @State private var matchId = ""
     @State private var jersey = ""
     @State private var snapshot = ""
@@ -433,6 +457,8 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
         try await flush()
         guard matchId.range(of: "^[A-Za-z0-9:_-]{1,128}$", options: .regularExpression) != nil else { throw URLError(.badURL) }
         snapshot = try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(matchId)")
+        // Accepted-only official state also feeds the local schedule/standings (shared KMP rule).
+        onSnapshot(snapshot)
     }
     private func review(_ changeId: String, _ action: String) async throws {
         try await send("/v0/links/\(link.id)/consensus/changes/\(changeId)/\(action)",

@@ -78,4 +78,14 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
             }
         }
     }
+
+    /** Persist accepted-only consensus results onto this link's coordinated fixtures. */
+    fun applyConsensus(linkId: String, linkHomeTeamId: String, snapshots: List<com.infinityball.pitchpact.dto.ConsensusSnapshot>) = runBlocking {
+        db.withTransaction {
+            val old = fixtures().filter { it.coordinatedLinkId == linkId }
+            val updated = com.infinityball.pitchpact.domain.Coordination.applyResults(old, linkId, linkHomeTeamId, snapshots)
+            for ((before, after) in old.zip(updated)) if (before != after)
+                dao.saveFixture(FixtureRow(after.id, json.encodeToString(Fixture.serializer(), after)))
+        }
+    }
 }

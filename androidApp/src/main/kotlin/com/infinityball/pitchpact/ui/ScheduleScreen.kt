@@ -74,7 +74,10 @@ import java.util.UUID
             TextButton(onClick = { selectedGame = game.id }) {
                 Text("${game.title} · ${DateFormat.getDateTimeInstance().format(Date(game.startEpochMillis))}" +
                     (if (game.startEpochMillis < System.currentTimeMillis()) " (past)" else "") +
-                    if (game.resultStatus == ResultStatus.PENDING) " · result pending" else "")
+                    (if (game.officialHome != null && game.officialAway != null)
+                        " · official ${game.officialHome}-${game.officialAway}" +
+                            (if (game.resultStatus == ResultStatus.PENDING) " (awaiting opponent confirmation)" else "")
+                    else if (game.resultStatus == ResultStatus.PENDING) " · result pending" else ""))
             }
         }
         if (selectedGame != null) {

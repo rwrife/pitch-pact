@@ -57,7 +57,11 @@ struct ScheduleView: View {
                                 }
                             }
                             Text(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000), style: .date)
-                            if fixture.resultStatus == .PENDING { Text("Result pending review").foregroundStyle(.orange) }
+                            if let h = fixture.officialHome, let a = fixture.officialAway {
+                                Text("Official \(h)-\(a)\(fixture.resultStatus == .PENDING ? " (result pending opponent confirmation)" : "")")
+                                    .foregroundStyle(fixture.resultStatus == .PENDING ? .orange : .primary)
+                                    .accessibilityIdentifier("fixture.result.\(fixture.id)")
+                            }
                         }
                     }
                 }
