@@ -157,122 +157,13 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
 
     var body: some View {
         Form {
-            Section("Server") {
-                Text("Self-hosted registry. Enter your HTTPS server URL; no public deployment is assumed.")
-                TextField("https://your-server.example", text: $endpoint)
-                    .textInputAutocapitalization(.never).keyboardType(.URL)
-                    .onChange(of: endpoint) { _, v in UserDefaults.standard.set(v, forKey: "registry.endpoint") }
-            }
-            Section("My team") {
-                Picker("Local team", selection: $selectedTeamId) {
-                    Text("Select team").tag("")
-                    ForEach(teams) { Text($0.name).tag($0.id) }
-                }
-                .onChange(of: selectedTeamId) { _, v in do { creds = try RegistrySecrets.load(v) } catch { feedback = error.localizedDescription } }
-                if let team = teams.first(where: { $0.id == selectedTeamId }) {
-                    if let creds {
-                        Text("Share team code: \(creds.teamCode)").textSelection(.enabled)
-                        ShareLink("Share team code", item: creds.teamCode)
-                        Button("Rotate code (old one dies now)") { run {
-                            let code: TeamCode = try await transport.call("POST", "/v0/registry/teams/\(creds.team.id)/code/rotate", body: Optional<Int>.none)
-                            var next = creds; next.teamCode = code.teamCode; try RegistrySecrets.save(selectedTeamId, next); self.creds = next
-                        } }
-                        Button(creds.team.listed ? "Hide public listing" : "Show public listing") { run {
-                            let next: ListedTeam = try await transport.call("PUT", "/v0/registry/teams/\(creds.team.id)/listing",
-                                body: Visibility(listed: !creds.team.listed))
-                            var current = creds; current.team = next; try RegistrySecrets.save(selectedTeamId, current); self.creds = current
-                        } }
-                    } else {
-                        Text("Opt in before team appears in registry; only name, region and age group become visible.")
-                        TextField("Region", text: $region)
-                        TextField("Age group (e.g. U10)", text: $ageGroup)
-                        Button("Opt in & get team code") { run {
-                            let result: Credentials = try await RegistryTransport(endpoint: endpoint, key: nil).call("POST", "/v0/registry/teams",
-                                body: Create(listing: Listing(clubName: team.name, region: region, ageGroup: ageGroup),
-                                             idempotencyKey: UUID().uuidString))
-                            try RegistrySecrets.save(selectedTeamId, result); creds = result
-                        } }
-                    }
-                } else { Text("Create a local team first") }
-            }
+            serverSection
+            teamSection
             if let creds {
-                Section("Find teams") {
-                    TextField("Name, region or age group", text: $query)
-                    Button("Search registry") { run {
-                        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-                        found = try await transport.call("GET", "/v0/registry/teams?q=\(q)", body: Optional<Int>.none)
-                    } }
-                    ForEach(found, id: \.id) { team in
-                        Text("\(team.listing.clubName) · \(team.listing.region) · \(team.listing.ageGroup)")
-                    }
-                    TextField("Other team's TEAM-… code", text: $code).textInputAutocapitalization(.characters)
-                    Button("Request link") { run {
-                        let _: LinkRequest = try await transport.call("POST", "/v0/registry/teams/\(code)/link-requests",
-                            body: RequestLink(requesterTeamId: creds.team.id, idempotencyKey: UUID().uuidString))
-                        feedback = "Link request sent"
-                    } }
-                }
-                Section("Incoming links") {
-                    Button("Refresh inbox & schedule") { run { try await refresh(creds) } }
-                    ForEach(inbox.filter { $0.state == "pending" }, id: \.id) { request in
-                        Text("Incoming request · \(request.requesterTeamId)")
-                        Button("Accept link") { run {
-                            let _: TeamLink = try await transport.call("POST", "/v0/registry/links/\(request.id)/accept", body: Optional<Int>.none)
-                            try await refresh(creds)
-                        } }
-                    }
-                }
-                ForEach(links.filter { $0.state == "active" }, id: \.id) { link in
-                    Section("Linked · \(link.id)") {
-                        Button("Review fixture proposals") { run { proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none) } }
-                        ForEach(proposals.filter { $0.linkId == link.id && $0.state == "proposed" }) { fixture in
-                            Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
-                            Text("Home: \(fixture.homeUniform) · Away: \(fixture.awayUniform)")
-                            Button("Confirm fixture") { run {
-                                let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures/\(fixture.id)/confirm", body: Optional<Int>.none)
-                                proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
-                                try await refresh(creds)
-                            } }
-                        }
-                        ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint,
-                                         onSnapshot: { raw in try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: [raw]) })
-                            .id("\(endpoint)|\(link.id)|\(creds.team.id)")
-                        DatePicker("Kickoff", selection: $kickoff)
-                        TextField("Location", text: $location)
-                        TextField("Home uniform", text: $homeUniform)
-                        TextField("Away uniform", text: $awayUniform)
-                        Button("Propose fixture (needs both confirms)") { run {
-                            let proposal = Propose(startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
-                                location: location, homeUniform: homeUniform, awayUniform: awayUniform,
-                                idempotencyKey: UUID().uuidString)
-                            let text = String(decoding: try JSONEncoder().encode(proposal), as: UTF8.self)
-                            let verdict = rules.validateProposal(payload: text, now: Int64(Date().timeIntervalSince1970 * 1000))
-                            guard verdict == "OK" else { throw RegistryHTTPError(code: 400) }
-                            let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures", body: proposal)
-                            proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
-                        } }
-                    }
-                }
-                Section("Coordinated schedule") {
-                    Text("Only fixtures confirmed by both teams appear below or in local schedule.")
-                    Button("Sync confirmed games locally") { run {
-                        schedule = try await transport.call("GET", "/v0/registry/teams/\(creds.team.id)/schedule", body: Optional<Int>.none)
-                        try syncLocal(schedule, teamId: creds.team.id)
-                        for link in links where link.state == "active" {
-                            var raws: [String] = []
-                            for fixture in schedule where fixture.linkId == link.id {
-                                // 404 = no ledger yet for this fixture; anything else surfaces.
-                                do { raws.append(try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(fixture.id)")) }
-                                catch let error as RegistryHTTPError where error.code == 404 { continue }
-                            }
-                            try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: raws)
-                        }
-                    } }
-                    ForEach(schedule) { fixture in
-                        Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
-                        Text("Home \(fixture.homeUniform) / Away \(fixture.awayUniform)")
-                    }
-                }
+                findSection(creds)
+                inboxSection(creds)
+                linksSections(creds)
+                scheduleSection(creds)
             }
             if !feedback.isEmpty { Text(feedback).foregroundStyle(.orange) }
         }
@@ -280,6 +171,132 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
         .onAppear {
             teams = (try? AppTeamStore.shared.teams()) ?? []
             if selectedTeamId.isEmpty { selectedTeamId = teams.first?.id ?? "" }
+        }
+    }
+    @ViewBuilder private var serverSection: some View {
+        Section("Server") {
+            Text("Self-hosted registry. Enter your HTTPS server URL; no public deployment is assumed.")
+            TextField("https://your-server.example", text: $endpoint)
+                .textInputAutocapitalization(.never).keyboardType(.URL)
+                .onChange(of: endpoint) { _, v in UserDefaults.standard.set(v, forKey: "registry.endpoint") }
+        }
+    }
+    @ViewBuilder private var teamSection: some View {
+        Section("My team") {
+            Picker("Local team", selection: $selectedTeamId) {
+                Text("Select team").tag("")
+                ForEach(teams) { Text($0.name).tag($0.id) }
+            }
+            .onChange(of: selectedTeamId) { _, v in do { creds = try RegistrySecrets.load(v) } catch { feedback = error.localizedDescription } }
+            if let team = teams.first(where: { $0.id == selectedTeamId }) {
+                if let creds {
+                    Text("Share team code: \(creds.teamCode)").textSelection(.enabled)
+                    ShareLink("Share team code", item: creds.teamCode)
+                    Button("Rotate code (old one dies now)") { run {
+                        let code: TeamCode = try await transport.call("POST", "/v0/registry/teams/\(creds.team.id)/code/rotate", body: Optional<Int>.none)
+                        var next = creds; next.teamCode = code.teamCode; try RegistrySecrets.save(selectedTeamId, next); self.creds = next
+                    } }
+                    Button(creds.team.listed ? "Hide public listing" : "Show public listing") { run {
+                        let next: ListedTeam = try await transport.call("PUT", "/v0/registry/teams/\(creds.team.id)/listing",
+                            body: Visibility(listed: !creds.team.listed))
+                        var current = creds; current.team = next; try RegistrySecrets.save(selectedTeamId, current); self.creds = current
+                    } }
+                } else {
+                    Text("Opt in before team appears in registry; only name, region and age group become visible.")
+                    TextField("Region", text: $region)
+                    TextField("Age group (e.g. U10)", text: $ageGroup)
+                    Button("Opt in & get team code") { run {
+                        let result: Credentials = try await RegistryTransport(endpoint: endpoint, key: nil).call("POST", "/v0/registry/teams",
+                            body: Create(listing: Listing(clubName: team.name, region: region, ageGroup: ageGroup),
+                                         idempotencyKey: UUID().uuidString))
+                        try RegistrySecrets.save(selectedTeamId, result); creds = result
+                    } }
+                }
+            } else { Text("Create a local team first") }
+        }
+    }
+    @ViewBuilder private func findSection(_ creds: Credentials) -> some View {
+        Section("Find teams") {
+            TextField("Name, region or age group", text: $query)
+            Button("Search registry") { run {
+                let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                found = try await transport.call("GET", "/v0/registry/teams?q=\(q)", body: Optional<Int>.none)
+            } }
+            ForEach(found, id: \.id) { team in
+                Text("\(team.listing.clubName) · \(team.listing.region) · \(team.listing.ageGroup)")
+            }
+            TextField("Other team's TEAM-… code", text: $code).textInputAutocapitalization(.characters)
+            Button("Request link") { run {
+                let _: LinkRequest = try await transport.call("POST", "/v0/registry/teams/\(code)/link-requests",
+                    body: RequestLink(requesterTeamId: creds.team.id, idempotencyKey: UUID().uuidString))
+                feedback = "Link request sent"
+            } }
+        }
+    }
+    @ViewBuilder private func inboxSection(_ creds: Credentials) -> some View {
+        Section("Incoming links") {
+            Button("Refresh inbox & schedule") { run { try await refresh(creds) } }
+            ForEach(inbox.filter { $0.state == "pending" }, id: \.id) { request in
+                Text("Incoming request · \(request.requesterTeamId)")
+                Button("Accept link") { run {
+                    let _: TeamLink = try await transport.call("POST", "/v0/registry/links/\(request.id)/accept", body: Optional<Int>.none)
+                    try await refresh(creds)
+                } }
+            }
+        }
+    }
+    @ViewBuilder private func linksSections(_ creds: Credentials) -> some View {
+        ForEach(links.filter { $0.state == "active" }, id: \.id) { link in
+            Section("Linked · \(link.id)") {
+                Button("Review fixture proposals") { run { proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none) } }
+                ForEach(proposals.filter { $0.linkId == link.id && $0.state == "proposed" }) { fixture in
+                    Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
+                    Text("Home: \(fixture.homeUniform) · Away: \(fixture.awayUniform)")
+                    Button("Confirm fixture") { run {
+                        let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures/\(fixture.id)/confirm", body: Optional<Int>.none)
+                        proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
+                        try await refresh(creds)
+                    } }
+                }
+                ConsensusSection(link: link, myTeamId: creds.team.id, transport: transport, endpoint: endpoint,
+                                 onSnapshot: { raw in try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: [raw]) })
+                    .id("\(endpoint)|\(link.id)|\(creds.team.id)")
+                DatePicker("Kickoff", selection: $kickoff)
+                TextField("Location", text: $location)
+                TextField("Home uniform", text: $homeUniform)
+                TextField("Away uniform", text: $awayUniform)
+                Button("Propose fixture (needs both confirms)") { run {
+                    let proposal = Propose(startEpochMillis: Int64(kickoff.timeIntervalSince1970 * 1000),
+                        location: location, homeUniform: homeUniform, awayUniform: awayUniform,
+                        idempotencyKey: UUID().uuidString)
+                    let text = String(decoding: try JSONEncoder().encode(proposal), as: UTF8.self)
+                    let verdict = rules.validateProposal(payload: text, now: Int64(Date().timeIntervalSince1970 * 1000))
+                    guard verdict == "OK" else { throw RegistryHTTPError(code: 400) }
+                    let _: SharedFixture = try await transport.call("POST", "/v0/links/\(link.id)/fixtures", body: proposal)
+                    proposals = try await transport.call("GET", "/v0/links/\(link.id)/fixtures", body: Optional<Int>.none)
+                } }
+            }
+        }
+    }
+    @ViewBuilder private func scheduleSection(_ creds: Credentials) -> some View {
+        Section("Coordinated schedule") {
+            Text("Only fixtures confirmed by both teams appear below or in local schedule.")
+            Button("Sync confirmed games locally") { run {
+                schedule = try await transport.call("GET", "/v0/registry/teams/\(creds.team.id)/schedule", body: Optional<Int>.none)
+                try syncLocal(schedule, teamId: creds.team.id)
+                for link in links where link.state == "active" {
+                    var raws: [String] = []
+                    for fixture in schedule where fixture.linkId == link.id {
+                        do { raws.append(try await transport.callRaw("GET", "/v0/links/\(link.id)/consensus?matchId=\(fixture.id)")) }
+                        catch let error as RegistryHTTPError where error.code == 404 { continue }
+                    }
+                    try applyConsensus(linkId: link.id, linkHomeTeamId: link.firstTeamId, snapshots: raws)
+                }
+            } }
+            ForEach(schedule) { fixture in
+                Text("\(fixture.location) · \(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000).formatted())")
+                Text("Home \(fixture.homeUniform) / Away \(fixture.awayUniform)")
+            }
         }
     }
     private var transport: RegistryTransport { RegistryTransport(endpoint: endpoint, key: creds?.ownerKey) }
