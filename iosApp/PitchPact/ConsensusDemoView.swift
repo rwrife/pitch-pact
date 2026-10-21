@@ -28,10 +28,10 @@ import SwiftUI
                 TextField("Scorer jersey #", text: $jersey)
                     .keyboardType(.numberPad).accessibilityIdentifier("consensus.jersey")
                 Button("Submit goal for opponent review") { submit() }
-                    .accessibilityIdentifier("consensus.submit")
+                    .contentShape(Rectangle()).accessibilityIdentifier("consensus.submit")
                 Button("Switch to \(otherSide.lowercased()) sideline") {
                     side = otherSide; refresh()
-                }.accessibilityIdentifier("consensus.switch")
+                }.contentShape(Rectangle()).accessibilityIdentifier("consensus.switch")
             }
             Section("Scoreboard") {
                 Text(scoreline).accessibilityIdentifier("consensus.official")
@@ -41,7 +41,7 @@ import SwiftUI
                     if parts.count == 3 {
                         Text(parts[1]).accessibilityIdentifier("consensus.pending")
                         if parts[2] == "review" {
-                            Button("Accept") { review(parts[0], "accept") }.accessibilityIdentifier("consensus.accept")
+                            Button("Accept") { review(parts[0], "accept") }.contentShape(Rectangle()).accessibilityIdentifier("consensus.accept")
                             Button("Reject") { review(parts[0], "reject") }.accessibilityIdentifier("consensus.reject")
                         } else {
                             Button("Withdraw") { review(parts[0], "withdraw") }.accessibilityIdentifier("consensus.withdraw")
