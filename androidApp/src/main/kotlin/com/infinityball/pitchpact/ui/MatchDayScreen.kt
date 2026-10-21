@@ -7,6 +7,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import com.infinityball.pitchpact.MatchDayFacade
 import com.infinityball.pitchpact.data.*
@@ -18,7 +20,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import java.util.UUID
 
-@Composable fun MatchDayScreen(id: String, store: RoomMatchDayStore, home: String = "Home", away: String = "Away", onBack: () -> Unit) {
+@Composable fun MatchDayScreen(
+    id: String, store: RoomMatchDayStore,
+    home: String = "Home", away: String = "Away",
+    coordinatedLinkId: String? = null, official: String? = null,
+    onBack: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var endpoint by remember { mutableStateOf("") }
     var capability by remember { mutableStateOf("") }
@@ -42,8 +49,11 @@ import java.util.UUID
     fun change(block: () -> String) { try { val next = block(); store.save(MatchDayCodec.decode(next)); json = next; error = "" } catch (e: Exception) { error = e.message ?: "Capture failed" } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("Back to fixture") }
-        Text("OFFICIAL ${rules.official(json)} (opposing acceptance available in M7)")
-        Text("Pending score ${rules.pending(json)}")
+        val labels = runCatching { rules.scoreLabels(json, coordinatedLinkId != null, official) }
+            .getOrDefault(listOf("Score unavailable", "Local captures unavailable"))
+        Text(labels[0], modifier = Modifier.semantics { testTag = "match.official" })
+        if (coordinatedLinkId != null) Text("Linked score changes require opposing review in Find & link teams. Local capture stays on device; it is not a linked score submission.")
+        Text(labels[1], modifier = Modifier.semantics { testTag = "match.pending" })
         Text(runCatching { rules.clock(json, tick, System.currentTimeMillis(), boot) }.getOrDefault("Clock requires recovery"))
         Button(onClick = { change { rules.advance(json, SystemClock.elapsedRealtime(), System.currentTimeMillis(), boot, false, UUID.randomUUID().toString(), side) } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Advance clock") }
         Button(onClick = { change { rules.advance(json, SystemClock.elapsedRealtime(), System.currentTimeMillis(), boot, true, UUID.randomUUID().toString(), side) } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start stoppage") }

@@ -7,6 +7,8 @@ import PitchPactStore
     let fixtureId: String
     var homeTeam = "Home"
     var awayTeam = "Away"
+    var coordinatedLinkId: String? = nil
+    var official: String? = nil
     @State private var json = ""
     @State private var side = "HOME"
     @State private var kind = "OPEN_PLAY"
@@ -43,9 +45,13 @@ import PitchPactStore
         Form {
             if !json.isEmpty {
                 Section("Score") {
-                    Text("OFFICIAL \((try? rules.official(json: json)) ?? "Unavailable")").accessibilityIdentifier("officialScore")
-                    Text("Offline captures remain unconfirmed here. Linked consensus submissions and opposing review use the team registry screen.")
-                    Text("Pending score \((try? rules.pending(json: json)) ?? "Unavailable")").accessibilityIdentifier("pendingScore")
+                    let labels = (try? rules.scoreLabels(json: json, coordinated: coordinatedLinkId != nil, official: official))
+                        ?? ["Score unavailable", "Local captures unavailable"]
+                    Text(labels[0]).accessibilityIdentifier("officialScore")
+                    if coordinatedLinkId != nil {
+                        Text("Linked score changes require opposing review in Team registry. Local capture stays on device; it is not a linked score submission.")
+                    }
+                    Text(labels[1]).accessibilityIdentifier("pendingScore")
                     TimelineView(.periodic(from: .now, by: 1)) { _ in
                         Text((try? clockText()) ?? "Clock requires recovery")
                     }

@@ -3,6 +3,16 @@ import kotlin.test.*
 import kotlin.random.Random
 
 class MatchDayTest {
+    @Test fun coordinatedMatchDayNeverPromotesLocalCaptureIntoOfficialScore() {
+        val state = MatchDayCodec.encode(MatchDayState("coordinated:game").capture(
+            LedgerEvent.Event("goal", Side.HOME, 1, EventPayload.Goal(Side.HOME, 9))))
+        val rules = com.infinityball.pitchpact.MatchDayFacade()
+        assertEquals(listOf("OFFICIAL — (no linked result synced)",
+            "Local captures 1-0 (not submitted for opposing review)"), rules.scoreLabels(state, true, null))
+        assertEquals("OFFICIAL 0-1 (last linked sync)", rules.scoreLabels(state, true, "0-1")[0])
+        assertEquals("OFFICIAL 0-0", rules.scoreLabels(state, false, null)[0])
+        assertFailsWith<IllegalArgumentException> { rules.scoreLabels(state, true, "invalid") }
+    }
     private fun sample(t: Long, boot: String = "a", epoch: Long = 10000 + t) = ClockSample(t, epoch, boot)
     private fun goal(id: String = "g", side: Side = Side.HOME) = LedgerEvent.Event(id, side, 0, EventPayload.Goal(side, 9))
     @Test fun clockTableAndFirstHalfStoppage() {

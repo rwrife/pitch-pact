@@ -46,6 +46,21 @@ class MatchDayFacade {
     fun official(json: String): String = MatchDayCodec.decode(json).officialScore().render()
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
     fun pending(json: String): String = MatchDayCodec.decode(json).pendingScore().render()
+    /** Coordinated games have one official source: last authenticated, accepted-only server projection.
+     * Local captures never promote themselves into that score, even while offline. */
+    @Throws(IllegalArgumentException::class, IllegalStateException::class)
+    fun scoreLabels(json: String, coordinated: Boolean, official: String?): List<String> {
+        val captured = MatchDayCodec.decode(json)
+        if (!coordinated) return listOf("OFFICIAL ${captured.officialScore().render()}", "Pending score ${captured.pendingScore().render()}")
+        val accepted = official?.split('-')
+        require(official == null || (accepted?.size == 2 && accepted.all { it.toIntOrNull() != null && it.toInt() >= 0 })) {
+            "Linked official score must be two non-negative scores"
+        }
+        return listOf(
+            if (official == null) "OFFICIAL — (no linked result synced)" else "OFFICIAL $official (last linked sync)",
+            "Local captures ${captured.pendingScore().render()} (not submitted for opposing review)",
+        )
+    }
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
     fun undo(json: String): String = MatchDayCodec.encode(MatchDayCodec.decode(json).undoTail())
     @Throws(IllegalArgumentException::class, IllegalStateException::class)

@@ -34,7 +34,9 @@ import java.util.UUID
         val fixture = schedule.fixtures().firstOrNull { it.id == scoring }
         val homeName = teamStore.teams().firstOrNull { it.id == fixture?.homeTeamId }?.name ?: "Home"
         val awayName = teamStore.teams().firstOrNull { it.id == fixture?.awayTeamId }?.name ?: "Away"
-        MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName) { scoring = null }
+        MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName,
+            coordinatedLinkId = fixture?.coordinatedLinkId,
+            official = fixture?.officialHome?.let { h -> fixture.officialAway?.let { "$h-$it" } }) { scoring = null }
         return
     }
     var reminder by remember { mutableStateOf(false) }
