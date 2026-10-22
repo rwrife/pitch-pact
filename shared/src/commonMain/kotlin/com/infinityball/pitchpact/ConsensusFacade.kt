@@ -25,6 +25,44 @@ class ConsensusFacade {
         val change = ScoreChange(changeId, matchId, s, eventId, ScoreChangeAction.ADD)
         return json.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, event, idempotencyKey))
     }
+    /** Convert one locally captured, still-queued goal into a linked submission without
+     * changing the device ledger. Fixture HOME and link HOME can be opposite teams;
+     * the server must see the link side, never the fixture side. The caller must
+     * persist the returned body/key in the consensus outbox before network IO.
+     * ponytail: This prepares match-day transport; native screens must wire the
+     * durable outbox before enabling linked submission from capture. */
+    @Throws(IllegalArgumentException::class, IllegalStateException::class)
+    fun capturedGoal(json: String, eventId: String, fixtureHomeTeamId: String, fixtureAwayTeamId: String,
+                     linkFirstTeamId: String, linkSecondTeamId: String, myTeamId: String,
+                     changeId: String, idempotencyKey: String): String {
+        val state = MatchDayCodec.decode(json)
+        require(state.matchId.startsWith("coordinated:") && state.matchId.length > "coordinated:".length)
+        require(fixtureHomeTeamId != fixtureAwayTeamId &&
+            setOf(fixtureHomeTeamId, fixtureAwayTeamId) == setOf(linkFirstTeamId, linkSecondTeamId)) {
+            "Fixture and link parties must match"
+        }
+        val fixtureSide = if (myTeamId == fixtureHomeTeamId) Side.HOME else {
+            require(myTeamId == fixtureAwayTeamId) { "Only a fixture party can submit a captured goal" }
+            Side.AWAY
+        }
+        val linkSide = Side.valueOf(sideFor(linkFirstTeamId, linkSecondTeamId, myTeamId))
+        require(eventId in state.queuedIds) { "Captured goal must still be queued locally" }
+        val captured = state.events.singleOrNull { it.eventId == eventId } as? LedgerEvent.Event
+            ?: throw IllegalArgumentException("Only an original goal capture can be submitted")
+        val goal = captured.payload as? EventPayload.Goal
+            ?: throw IllegalArgumentException("Only a goal capture can be submitted")
+        require(captured.side == fixtureSide && goal.side == fixtureSide) { "Cannot submit opponent's capture" }
+        require(goal.jerseyNumber in 0..99 && (goal.assistJerseyNumber == null || goal.assistJerseyNumber in 0..99)) {
+            "Jersey numbers must be 0-99"
+        }
+        val matchId = state.matchId.removePrefix("coordinated:")
+        require(matchId.matches(Regex("[A-Za-z0-9:_-]{1,128}")) && changeId.isNotBlank() && idempotencyKey.length in 16..128)
+        val linked = captured.copy(side = linkSide, payload = goal.copy(side = linkSide))
+        val change = ScoreChange(changeId, matchId, linkSide,
+            linked.eventId, ScoreChangeAction.ADD)
+        return this.json.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, linked, idempotencyKey))
+    }
+
     /** Accepted own goals remain editable through new pending decisions, never by rewriting history. */
     @Throws(IllegalArgumentException::class)
     fun acceptedGoalRows(snapshotJson: String, side: String): List<String> {

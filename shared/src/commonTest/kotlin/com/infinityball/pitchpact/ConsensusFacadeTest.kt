@@ -79,6 +79,39 @@ class ConsensusFacadeTest {
         assertTrue(facade.recordLedger(after).contains("resolved by AWAY"))
     }
 
+    @Test fun capturedGoalMapsFixtureSideToLinkSideAndPreservesLocalLedger() {
+        val local = MatchDayState("coordinated:FIX-1").capture(
+            LedgerEvent.Event("goal-1", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9)))
+        val localJson = MatchDayCodec.encode(local)
+        val body = facade.capturedGoal(localJson, "goal-1", "team-b", "team-a",
+            "team-a", "team-b", "team-b", "change-1", "idempotency-key-0123456789")
+        val submit = json.decodeFromString(ConsensusSubmit.serializer(), body)
+        assertEquals("FIX-1", submit.change.matchId)
+        assertEquals(Side.AWAY, submit.change.submittedBy)
+        assertEquals(Side.AWAY, submit.event.side)
+        assertEquals(Side.AWAY, (submit.event as LedgerEvent.Event).payload.let { (it as EventPayload.Goal).side })
+        assertEquals("goal-1", submit.event.eventId)
+        assertEquals(local, MatchDayCodec.decode(localJson))
+        val pending = ConsensusBook.submit(emptyList(), SubmissionRequest(submit.change, submit.event), Side.AWAY, 1_001)
+        assertEquals("0-0", ConsensusBook.project(pending, emptySet()).officialScore.render())
+        assertEquals("0-1", ConsensusBook.project(ConsensusBook.review(pending, "change-1", Side.HOME,
+            ConsensusAction.ACCEPT, 1_002), emptySet()).officialScore.render())
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoal(localJson, "goal-1", "team-b", "team-c",
+            "team-a", "team-b", "team-b", "change-1", "key") }
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoal(localJson, "goal-1", "team-b", "team-a",
+            "team-a", "team-b", "team-a", "change-1", "key") }
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoal(localJson, "missing", "team-b", "team-a",
+            "team-a", "team-b", "team-b", "change-1", "key") }
+        val clock = MatchDayCodec.encode(local.capture(LedgerEvent.Event("clock-1", Side.HOME, 1_001,
+            EventPayload.Clock(ClockTransition.HALFTIME, 60))))
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoal(clock, "clock-1", "team-b", "team-a",
+            "team-a", "team-b", "team-b", "change-1", "idempotency-key-0123456789") }
+        val invalidJersey = MatchDayCodec.encode(MatchDayState("coordinated:FIX-1").capture(
+            LedgerEvent.Event("bad-jersey", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 100))))
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoal(invalidJersey, "bad-jersey", "team-b", "team-a",
+            "team-a", "team-b", "team-b", "change-2", "idempotency-key-0123456789") }
+    }
+
     @Test fun acceptedGoalRowsAndChangesTrackOnlyOwnAcceptedGoals() {
         val pending = decision("c-pending", Side.HOME, ConsensusState.PENDING)
         val acceptedHome = decision("c-acc", Side.HOME, ConsensusState.ACCEPTED)
