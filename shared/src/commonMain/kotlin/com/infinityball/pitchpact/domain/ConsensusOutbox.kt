@@ -26,23 +26,26 @@ data class OutboxRefusal(val entry: OutboxEntry, val status: Int)
 data class ConsensusOutbox(
     val queued: List<OutboxEntry> = emptyList(),
     val refused: List<OutboxRefusal> = emptyList(),
+    // Retain IDs after delivery so a captured goal cannot be re-submitted after restart.
+    val deliveredIds: Set<String> = emptySet(),
 ) {
     fun enqueue(entry: OutboxEntry): ConsensusOutbox {
         require(entry.id.isNotBlank() && entry.body.isNotBlank() &&
             Regex("^/v0/links/[A-Za-z0-9_-]+/consensus(?:/changes(?:/[A-Za-z0-9_-]+/(?:accept|reject|withdraw))?|/whistle)$").matches(entry.path)) {
             "Outbox entry must target a link consensus mutation"
         }
-        return if (queued.any { it.id == entry.id } || refused.any { it.entry.id == entry.id }) this
-        else copy(queued = queued + entry)
+        return if (contains(entry.id)) this else copy(queued = queued + entry)
     }
+
+    fun contains(id: String): Boolean = id in deliveredIds || queued.any { it.id == id } || refused.any { it.entry.id == id }
 
     /** The entry that must be delivered next, or null when the queue is empty. */
     fun head(): OutboxEntry? = queued.firstOrNull()
 
-    /** Head was accepted by the server. */
+    /** Head was accepted by the server. Retain ID across restarts. */
     fun delivered(id: String): ConsensusOutbox {
         require(queued.firstOrNull()?.id == id) { "Only the head entry can be marked delivered" }
-        return copy(queued = queued.drop(1))
+        return copy(queued = queued.drop(1), deliveredIds = deliveredIds + id)
     }
 
     /** Head received a definitive 4xx: keep it for review, unblock the queue. */

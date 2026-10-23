@@ -11,6 +11,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.unit.dp
 import com.infinityball.pitchpact.MatchDayFacade
+import com.infinityball.pitchpact.ConsensusFacade
+import com.infinityball.pitchpact.dto.LinkView
+import com.infinityball.pitchpact.dto.RegistryCredentials
+import android.content.Context
 import com.infinityball.pitchpact.data.*
 import com.infinityball.pitchpact.domain.*
 import com.infinityball.pitchpact.dto.PitchPactJson
@@ -23,6 +27,7 @@ import java.util.UUID
 @Composable fun MatchDayScreen(
     id: String, store: RoomMatchDayStore,
     home: String = "Home", away: String = "Away",
+    fixtureHomeTeamId: String? = null, fixtureAwayTeamId: String? = null,
     coordinatedLinkId: String? = null, official: String? = null,
     onBack: () -> Unit,
 ) {
@@ -42,6 +47,30 @@ import java.util.UUID
     var other by remember { mutableStateOf("10") }
     var error by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("registry_private", Context.MODE_PRIVATE) }
+    val consensus = remember { ConsensusFacade() }
+    val consensusStore = remember { ConsensusOutboxStore(context) }
+    val registryEndpoint = prefs.getString("endpoint", "") ?: ""
+    val link = remember(coordinatedLinkId) {
+        coordinatedLinkId?.let { linkId -> prefs.getString("link:$linkId", null)?.let {
+            runCatching { PitchPactJson.codec.decodeFromString(LinkView.serializer(), it) }.getOrNull()
+        } }?.takeIf { it.state == "active" && setOf(it.firstTeamId, it.secondTeamId) ==
+            setOfNotNull(fixtureHomeTeamId, fixtureAwayTeamId) }
+    }
+    val credentialPairs = remember(link, fixtureHomeTeamId, fixtureAwayTeamId) {
+        listOfNotNull(fixtureHomeTeamId, fixtureAwayTeamId).mapNotNull { teamId ->
+            prefs.getString("team:$teamId", null)?.let { raw ->
+                runCatching { PitchPactJson.codec.decodeFromString(RegistryCredentials.serializer(), raw) }.getOrNull()
+            }?.takeIf { it.team.id == teamId }
+        }
+    }
+    val creds = credentialPairs.singleOrNull()
+    var outbox by remember(registryEndpoint, coordinatedLinkId, creds?.team?.id) { mutableStateOf(
+        try {
+            if (link == null || creds == null) "" else consensusStore.load(registryEndpoint, link.id, creds.team.id) ?: consensus.outboxNew()
+        } catch (e: Exception) { "" }
+    ) }
+    var outboxFailed by remember { mutableStateOf(link != null && creds != null && outbox.isEmpty()) }
     val boot = remember { runCatching {
         android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT).toString()
     }.getOrElse { "uncorrelated-${UUID.randomUUID()}" } }
@@ -78,6 +107,65 @@ import java.util.UUID
             if (correctionTarget.isBlank()) captured else rules.correct(json, correctionTarget, captured, UUID.randomUUID().toString(), System.currentTimeMillis())
         } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Capture event") }
         Button(onClick = { change { rules.undo(json) } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo uncommitted tail") }
+        if (coordinatedLinkId != null) {
+            Text("Linked consensus submission")
+            if (outboxFailed) {
+                Text("Durable outbox read/write failed. Work queue stopped to prevent data loss.", color = MaterialTheme.colorScheme.error)
+            } else if (link != null && creds != null) {
+                if (outbox.isNotBlank()) Text(consensus.outboxSummary(outbox), modifier = Modifier.semantics { testTag = "match.outbox" })
+                val rows = runCatching {
+                    consensus.capturedGoalRows(json, fixtureHomeTeamId ?: "", fixtureAwayTeamId ?: "", creds.team.id, outbox)
+                }.getOrDefault(emptyList())
+                if (rows.isEmpty()) Text("No unsent own goals ready for opposing review", modifier = Modifier.semantics { testTag = "match.noPendingGoals" })
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            val client = RegistryClient(registryEndpoint)
+                            while (true) {
+                                val entry = consensus.outboxHead(outbox)
+                                if (entry.isEmpty()) break
+                                val status = withContext(Dispatchers.IO) {
+                                    client.statusOf("POST", consensus.outboxPath(entry), creds.ownerKey, consensus.outboxBody(entry))
+                                }
+                                val next = when (status) {
+                                    in 200..299 -> consensus.outboxDelivered(outbox, consensus.outboxId(entry))
+                                    in 400..499 -> consensus.outboxRefuse(outbox, consensus.outboxId(entry), status)
+                                    else -> break // retry exact bytes later
+                                }
+                                consensusStore.save(registryEndpoint, link.id, creds.team.id, next)
+                                outbox = next
+                            }
+                            error = consensus.outboxSummary(outbox)
+                        } catch (e: Exception) {
+                            outbox = ""; outboxFailed = true
+                            error = e.message ?: "Outbox unavailable; queue stopped"
+                        }
+                    }
+                }, modifier = Modifier.semantics { testTag = "match.flushConsensus" }) { Text("Send queued consensus changes") }
+                rows.forEach { row ->
+                    val (eventId, label) = row.split('|')
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(label)
+                        Button(onClick = {
+                            try {
+                                val next = consensus.enqueueCapturedGoal(outbox, json, eventId, link.id,
+                                    fixtureHomeTeamId ?: "", fixtureAwayTeamId ?: "",
+                                    link.firstTeamId, link.secondTeamId, creds.team.id)
+                                consensusStore.save(registryEndpoint, link.id, creds.team.id, next)
+                                outbox = next; error = ""
+                            } catch (e: Exception) {
+                                error = e.message ?: "Failed to queue captured goal"
+                            }
+                        }, modifier = Modifier.semantics { testTag = "match.submitGoal.$eventId" }) {
+                            Text("Submit for opponent review")
+                        }
+                    }
+                }
+            } else {
+                Text("Linked scorer credentials unavailable. Open Find & link teams, refresh links for this fixture's team, then return. Local capture is retained.",
+                    modifier = Modifier.semantics { testTag = "match.linkedUnavailable" })
+            }
+        }
         ExtraKind.entries.forEach { extra ->
             val enabled = extra in MatchDayCodec.decode(json).enabledExtras
             Row { Checkbox(enabled, { selected -> change {

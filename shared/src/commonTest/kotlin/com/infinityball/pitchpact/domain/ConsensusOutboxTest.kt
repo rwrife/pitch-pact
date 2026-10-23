@@ -22,7 +22,11 @@ class ConsensusOutboxTest {
         assertEquals(add, restored.head()) // network loss leaves exact request in place
         assertFailsWith<IllegalArgumentException> { restored.delivered(review.id) }
         assertEquals(review, restored.delivered(add.id).head())
-        assertEquals("All consensus changes delivered", restored.delivered(add.id).delivered(review.id).summary())
+        val delivered = restored.delivered(add.id).delivered(review.id)
+        assertEquals("All consensus changes delivered", delivered.summary())
+        assertEquals(delivered, delivered.enqueue(add)) // restart cannot re-submit delivered capture
+        assertTrue(PitchPactJson.codec.decodeFromString<ConsensusOutbox>(PitchPactJson.codec.encodeToString(delivered)).contains(add.id))
+        assertFalse(delivered.contains("never-sent"))
     }
 
     @Test fun definitiveRefusalRetainsAuditAndServerFailureNeverDiscardsWork() {

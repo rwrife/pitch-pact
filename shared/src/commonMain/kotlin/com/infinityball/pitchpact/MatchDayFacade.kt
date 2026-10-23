@@ -58,11 +58,15 @@ class MatchDayFacade {
         }
         return listOf(
             if (official == null) "OFFICIAL — (no linked result synced)" else "OFFICIAL $official (last linked sync)",
-            "Local captures ${captured.pendingScore().render()} (not submitted for opposing review)",
+            "Local captures ${captured.pendingScore().render()} (not yet official pending opposing review)",
         )
     }
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
-    fun undo(json: String): String = MatchDayCodec.encode(MatchDayCodec.decode(json).undoTail())
+    fun undo(json: String): String {
+        val state = MatchDayCodec.decode(json)
+        require(!state.matchId.startsWith("coordinated:")) { "Linked match events must stay in the ledger; append a correction" }
+        return MatchDayCodec.encode(state.undoTail())
+    }
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
     fun correct(json: String, target: String, replacementJSON: String, id: String, epoch: Long): String {
         val state = MatchDayCodec.decode(json)

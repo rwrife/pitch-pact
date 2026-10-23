@@ -112,6 +112,47 @@ class ConsensusFacadeTest {
             "team-a", "team-b", "team-b", "change-2", "idempotency-key-0123456789") }
     }
 
+    @Test fun capturedGoalRowsOfferOnlyOwnQueuedUncorrectedGoals() {
+        val homeGoal = LedgerEvent.Event("goal-home-0000001", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9))
+        val awayGoal = LedgerEvent.Event("goal-away-0000001", Side.AWAY, 1_100, EventPayload.Goal(Side.AWAY, 7))
+        val card = LedgerEvent.Event("card-home-00000001", Side.HOME, 1_200, EventPayload.Card(Side.HOME, 4, CardColor.YELLOW))
+        var state = MatchDayState("coordinated:FIX-1").capture(homeGoal).capture(awayGoal).capture(card)
+        val stateJson = MatchDayCodec.encode(state)
+        // Fixture HOME is team-b while link HOME is team-a: rows follow the fixture side.
+        assertEquals(listOf("goal-home-0000001|Goal #9 (open play)"),
+            facade.capturedGoalRows(stateJson, "team-b", "team-a", "team-b", facade.outboxNew()))
+        assertEquals(listOf("goal-away-0000001|Goal #7 (open play)"),
+            facade.capturedGoalRows(stateJson, "team-b", "team-a", "team-a", facade.outboxNew()))
+        assertFailsWith<IllegalArgumentException> { facade.capturedGoalRows(stateJson, "team-b", "team-a", "team-c", facade.outboxNew()) }
+        // Queued/committed/refused entries and corrected goals are never offered again.
+        val queuedOutbox = facade.enqueueCapturedGoal(facade.outboxNew(), stateJson, "goal-home-0000001", "link-1",
+            "team-b", "team-a", "team-a", "team-b", "team-b")
+        assertTrue(facade.outboxContains(queuedOutbox, "goal-home-0000001"))
+        assertEquals(emptyList(), facade.capturedGoalRows(stateJson, "team-b", "team-a", "team-b", queuedOutbox))
+        assertFailsWith<IllegalArgumentException> { facade.enqueueCapturedGoal(queuedOutbox, stateJson, "goal-home-0000001", "link-1",
+            "team-b", "team-a", "team-a", "team-b", "team-b") }
+        val delivered = facade.outboxDelivered(queuedOutbox, "goal-home-0000001")
+        assertFailsWith<IllegalArgumentException> { facade.enqueueCapturedGoal(delivered, stateJson, "goal-home-0000001", "link-1",
+            "team-b", "team-a", "team-a", "team-b", "team-b") }
+        val refused = facade.outboxRefuse(queuedOutbox, "goal-home-0000001", 409)
+        assertFailsWith<IllegalArgumentException> { facade.enqueueCapturedGoal(refused, stateJson, "goal-home-0000001", "link-1",
+            "team-b", "team-a", "team-a", "team-b", "team-b") }
+        // Enqueued entry carries the exact link-side submission body and link path.
+        val entry = facade.outboxHead(queuedOutbox)
+        assertEquals("/v0/links/link-1/consensus/changes", facade.outboxPath(entry))
+        val submit = json.decodeFromString(ConsensusSubmit.serializer(), facade.outboxBody(entry))
+        assertEquals(Side.AWAY, submit.change.submittedBy)
+        assertEquals("FIX-1", submit.change.matchId)
+        assertEquals("goal-home-0000001", submit.change.changeId)
+        // Acknowledged (delivered to broadcast, no longer queued locally) drops out of the offer.
+        state = state.acknowledge(listOf(homeGoal))
+        assertEquals(emptyList(), facade.capturedGoalRows(MatchDayCodec.encode(state), "team-b", "team-a", "team-b", facade.outboxNew()))
+        // A corrected goal needs an explicit consensus correction, never a second ADD.
+        val corrected = MatchDayCodec.encode(MatchDayState("coordinated:FIX-1").capture(homeGoal).capture(
+            LedgerEvent.Correction("correction-0000001", Side.HOME, 1_300, "goal-home-0000001", homeGoal.copy(eventId = "replacement-0000001"))))
+        assertEquals(emptyList(), facade.capturedGoalRows(corrected, "team-b", "team-a", "team-b", facade.outboxNew()))
+    }
+
     @Test fun acceptedGoalRowsAndChangesTrackOnlyOwnAcceptedGoals() {
         val pending = decision("c-pending", Side.HOME, ConsensusState.PENDING)
         val acceptedHome = decision("c-acc", Side.HOME, ConsensusState.ACCEPTED)

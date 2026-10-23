@@ -182,6 +182,9 @@ fun RegistryScreen(store: RoomTeamStore, schedule: com.infinityball.pitchpact.da
             Button(onClick = { run {
                 inbox = client.inbox(c.team.id, c.ownerKey)
                 links = client.links(c.team.id, c.ownerKey)
+                links.filter { it.state == "active" }.forEach { link ->
+                    prefs.edit().putString("link:${link.id}", PitchPactJson.codec.encodeToString(LinkView.serializer(), link)).commit()
+                }
                 sharedSchedule = client.schedule(c.team.id, c.ownerKey)
             } }) { Text("Refresh links & coordinated schedule") }
             Button(onClick = { run {

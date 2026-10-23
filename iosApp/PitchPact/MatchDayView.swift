@@ -7,6 +7,8 @@ import PitchPactStore
     let fixtureId: String
     var homeTeam = "Home"
     var awayTeam = "Away"
+    var fixtureHomeTeamId: String? = nil
+    var fixtureAwayTeamId: String? = nil
     var coordinatedLinkId: String? = nil
     var official: String? = nil
     @State private var json = ""
@@ -20,6 +22,10 @@ import PitchPactStore
     @State private var capability = ""
     @State private var syncing = false
     @State private var correctionTarget = ""
+    @State private var linkedParties: (link: TeamLink, creds: Credentials)?
+    @State private var outbox = ""
+    @State private var outboxFailed = false
+    private let consensusRules = ConsensusFacade()
     private var enabledExtras: Set<String> {
         guard let bytes = json.data(using: .utf8),
               let snapshot = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
@@ -49,7 +55,7 @@ import PitchPactStore
                         ?? ["Score unavailable", "Local captures unavailable"]
                     Text(labels[0]).accessibilityIdentifier("officialScore")
                     if coordinatedLinkId != nil {
-                        Text("Linked score changes require opposing review in Team registry. Local capture stays on device; it is not a linked score submission.")
+                        Text("Linked score changes require opposing review. Local captures stay on device until queued for linked submission below.")
                     }
                     Text(labels[1]).accessibilityIdentifier("pendingScore")
                     TimelineView(.periodic(from: .now, by: 1)) { _ in
@@ -79,6 +85,34 @@ import PitchPactStore
                     }.frame(minHeight: 44)
                     Button("Undo uncommitted tail") { change { try rules.undo(json: json) } }.frame(minHeight: 44)
                 }
+                if coordinatedLinkId != nil { Section("Linked consensus submission") {
+                    Text("Every linked goal stays in the local ledger and queues durably. It becomes official only after the opposing sideline accepts.").font(.caption)
+                    if outboxFailed { Text("Durable outbox unavailable. Queue stopped to prevent data loss.").foregroundStyle(.red) }
+                    else if let parties = linkedParties {
+                        if !outbox.isEmpty {
+                            Text("Consensus outbox: \((try? consensusRules.outboxSummary(outboxJson: outbox)) ?? "unavailable")")
+                                .accessibilityIdentifier("match.outbox")
+                        }
+                        let rows = (try? consensusRules.capturedGoalRows(stateJson: json, fixtureHomeTeamId: fixtureHomeTeamId ?? "",
+                            fixtureAwayTeamId: fixtureAwayTeamId ?? "", myTeamId: parties.creds.team.id, outboxJson: outbox)) ?? []
+                        if rows.isEmpty { Text("No unsent own goals ready for opposing review").accessibilityIdentifier("match.noPendingGoals") }
+                        ForEach(rows, id: \.self) { row in
+                            let parts = row.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                            if parts.count == 2 {
+                                HStack {
+                                    Text(parts[1])
+                                    Button("Submit for opponent review") {
+                                        enqueueGoal(eventId: parts[0], parties: parties)
+                                    }.accessibilityIdentifier("match.submitGoal.\(parts[0])")
+                                }
+                            }
+                        }
+                        Button("Send queued consensus changes") { Task { await sendLinked() } }.frame(minHeight: 44)
+                    } else {
+                        Text("Linked scorer credentials unavailable. Open Team registry, refresh links for this fixture's team, then return. Local capture is retained.")
+                            .accessibilityIdentifier("match.linkedUnavailable")
+                    }
+                } }
                 Section("Extras") {
                     ForEach(["CORNER", "OFFSIDE", "SHOT_ON_TARGET", "SAVE", "INJURY_STOPPAGE"], id: \.self) { extra in
                         Toggle(extra, isOn: Binding(get: { enabledExtras.contains(extra) }, set: { enabled in
@@ -105,7 +139,58 @@ import PitchPactStore
         }.navigationTitle("Match day").onAppear {
             do { json = try AppTeamStore.shared.matchDay(id: fixtureId) ?? rules.initial(id: fixtureId) }
             catch { self.error = error.localizedDescription }
+            loadLinked()
         }
+    }
+    private func loadLinked() {
+        guard let linkId = coordinatedLinkId, let homeId = fixtureHomeTeamId, let awayId = fixtureAwayTeamId,
+              let data = UserDefaults.standard.data(forKey: "registry.link.\(linkId)"),
+              let link = try? JSONDecoder().decode(TeamLink.self, from: data), link.state == "active",
+              Set([link.firstTeamId, link.secondTeamId]) == Set([homeId, awayId]) else { linkedParties = nil; return }
+        var matches: [(TeamLink, Credentials)] = []
+        for teamId in [homeId, awayId] where Set([link.firstTeamId, link.secondTeamId]).contains(teamId) {
+            if let creds = try? RegistrySecrets.load(teamId) { matches.append((link, creds)) }
+        }
+        guard matches.count == 1 else { linkedParties = nil; return }
+        let parties = matches[0]
+        linkedParties = parties
+        endpoint = UserDefaults.standard.string(forKey: "registry.endpoint") ?? endpoint
+        do {
+            outbox = try ConsensusOutboxStore.load(endpoint, link.id, parties.1.team.id) ?? consensusRules.outboxNew()
+        } catch { error = error.isEmpty ? "Consensus outbox unavailable; local capture retained" : "\(error) · Consensus outbox unavailable" }
+    }
+    private func enqueueGoal(eventId: String, parties: (link: TeamLink, creds: Credentials)) {
+        guard !eventId.isEmpty, Set([parties.link.firstTeamId, parties.link.secondTeamId]) == Set([fixtureHomeTeamId, fixtureAwayTeamId].compactMap { $0 }) else {
+            error = "Linked goal submission requires complete fixture and active link details"; return
+        }
+        do {
+            let next = try consensusRules.enqueueCapturedGoal(outboxJson: outbox, stateJson: json, eventId: eventId,
+                linkId: parties.link.id, fixtureHomeTeamId: fixtureHomeTeamId ?? "", fixtureAwayTeamId: fixtureAwayTeamId ?? "",
+                linkFirstTeamId: parties.link.firstTeamId, linkSecondTeamId: parties.link.secondTeamId, myTeamId: parties.creds.team.id)
+            try ConsensusOutboxStore.save(endpoint, parties.link.id, parties.creds.team.id, next)
+            outbox = next; error = ""
+        } catch { self.error = error.localizedDescription }
+    }
+    private func sendLinked() async {
+        guard let parties = linkedParties, !endpoint.isEmpty else { error = "Registry endpoint and active link required"; return }
+        let transport = RegistryTransport(endpoint: endpoint, key: parties.creds.ownerKey)
+        do {
+            while true {
+                let entryJson = try consensusRules.outboxHead(outboxJson: outbox)
+                if entryJson.isEmpty { break }
+                let path = try consensusRules.outboxPath(entryJson: entryJson)
+                let body = try consensusRules.outboxBody(entryJson: entryJson)
+                let id = try consensusRules.outboxId(entryJson: entryJson)
+                let status = await transport.statusOf("POST", path, body: body)
+                let next: String
+                if (200...299).contains(status) { next = try consensusRules.outboxDelivered(outboxJson: outbox, id: id) }
+                else if (400...499).contains(status) { next = try consensusRules.outboxRefuse(outboxJson: outbox, id: id, status: status) }
+                else break
+                try ConsensusOutboxStore.save(endpoint, parties.link.id, parties.creds.team.id, next)
+                outbox = next
+            }
+            error = try consensusRules.outboxSummary(outboxJson: outbox)
+        } catch { self.error = error.localizedDescription }
     }
     private func clockText() throws -> String { try rules.clock(json: json, uptime: uptime, epoch: epoch, boot: boot) }
     private func change(_ action: () throws -> String) {

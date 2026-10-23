@@ -25,12 +25,29 @@ class ConsensusFacade {
         val change = ScoreChange(changeId, matchId, s, eventId, ScoreChangeAction.ADD)
         return json.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, event, idempotencyKey))
     }
+    /** Only own original queued goals can be offered for linked submission. */
+    @Throws(IllegalArgumentException::class)
+    fun capturedGoalRows(stateJson: String, fixtureHomeTeamId: String, fixtureAwayTeamId: String,
+                         myTeamId: String, outboxJson: String): List<String> {
+        val state = MatchDayCodec.decode(stateJson)
+        require(state.matchId.startsWith("coordinated:"))
+        require(fixtureHomeTeamId != fixtureAwayTeamId && myTeamId in setOf(fixtureHomeTeamId, fixtureAwayTeamId))
+        val me = if (myTeamId == fixtureHomeTeamId) Side.HOME else Side.AWAY
+        val outbox = decodeOutbox(outboxJson)
+        return state.events.filterIsInstance<LedgerEvent.Event>().mapNotNull { event ->
+            val goal = event.payload as? EventPayload.Goal
+            if (goal == null || event.side != me || event.eventId !in state.queuedIds ||
+                !event.eventId.matches(Regex("[A-Za-z0-9_-]{16,128}")) || outbox.contains(event.eventId) ||
+                state.events.any { it is LedgerEvent.Correction && it.correctsEventId == event.eventId }) null
+            // ponytail: Corrected goals need an explicit consensus correction, not another ADD.
+            else "${event.eventId}|Goal #${goal.jerseyNumber ?: "?"} (${goal.goalType.name.lowercase().replace('_', ' ')})"
+        }
+    }
+
     /** Convert one locally captured, still-queued goal into a linked submission without
      * changing the device ledger. Fixture HOME and link HOME can be opposite teams;
      * the server must see the link side, never the fixture side. The caller must
-     * persist the returned body/key in the consensus outbox before network IO.
-     * ponytail: This prepares match-day transport; native screens must wire the
-     * durable outbox before enabling linked submission from capture. */
+     * persist the returned body/key in the consensus outbox before network IO. */
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
     fun capturedGoal(json: String, eventId: String, fixtureHomeTeamId: String, fixtureAwayTeamId: String,
                      linkFirstTeamId: String, linkSecondTeamId: String, myTeamId: String,
@@ -149,6 +166,23 @@ class ConsensusFacade {
     fun outboxRefuse(outboxJson: String, id: String, status: Int): String = encodeOutbox(decodeOutbox(outboxJson).refuse(id, status))
     @Throws(IllegalArgumentException::class)
     fun outboxSummary(outboxJson: String): String = decodeOutbox(outboxJson).summary()
+    @Throws(IllegalArgumentException::class)
+    fun outboxContains(outboxJson: String, id: String): Boolean = decodeOutbox(outboxJson).contains(id)
+    /** Event ID also identifies the outbox write; replay and restarts cannot mint a second ADD. */
+    @Throws(IllegalArgumentException::class, IllegalStateException::class)
+    fun enqueueCapturedGoal(outboxJson: String, stateJson: String, eventId: String, linkId: String,
+                            fixtureHomeTeamId: String, fixtureAwayTeamId: String,
+                            linkFirstTeamId: String, linkSecondTeamId: String, myTeamId: String): String {
+        require(linkId.matches(Regex("[A-Za-z0-9_-]{1,128}")))
+        require(eventId.matches(Regex("[A-Za-z0-9_-]{16,128}")))
+        val outbox = decodeOutbox(outboxJson)
+        require(!outbox.contains(eventId)) { "Goal already queued, delivered, or refused" }
+        require(capturedGoalRows(stateJson, fixtureHomeTeamId, fixtureAwayTeamId, myTeamId, outboxJson)
+            .any { it.substringBefore('|') == eventId }) { "Goal unavailable for linked submission" }
+        val body = capturedGoal(stateJson, eventId, fixtureHomeTeamId, fixtureAwayTeamId,
+            linkFirstTeamId, linkSecondTeamId, myTeamId, eventId, eventId)
+        return encodeOutbox(outbox.enqueue(OutboxEntry(eventId, "/v0/links/$linkId/consensus/changes", body)))
+    }
     @Throws(IllegalArgumentException::class)
     fun outboxPath(entryJson: String): String = json.decodeFromString(OutboxEntry.serializer(), entryJson).path
     @Throws(IllegalArgumentException::class)

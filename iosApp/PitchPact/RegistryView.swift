@@ -7,11 +7,11 @@ import PitchPactStore
 
 // Native transport structs follow shared/src/commonMain/.../dto/Registry.kt byte-for-byte.
 // Registry business rules and the schedule merge live in the shared KMP module.
-private struct Listing: Codable { let clubName: String; let region: String; let ageGroup: String }
-private struct ListedTeam: Codable { let id: String; let listing: Listing; let listed: Bool }
-private struct Credentials: Codable { var team: ListedTeam; let ownerKey: String; var teamCode: String }
+struct Listing: Codable { let clubName: String; let region: String; let ageGroup: String }
+struct ListedTeam: Codable { let id: String; let listing: Listing; let listed: Bool }
+struct Credentials: Codable { var team: ListedTeam; let ownerKey: String; var teamCode: String }
 private struct LinkRequest: Codable { let id: String; let requesterTeamId: String; let recipientTeamId: String; let state: String; let expiresAt: Int64 }
-private struct TeamLink: Codable { let id: String; let firstTeamId: String; let secondTeamId: String; let state: String }
+struct TeamLink: Codable { let id: String; let firstTeamId: String; let secondTeamId: String; let state: String }
 private struct SharedFixture: Codable, Identifiable {
     let id: String; let linkId: String; let homeTeamId: String; let awayTeamId: String
     let startEpochMillis: Int64; let location: String; let homeUniform: String; let awayUniform: String
@@ -29,7 +29,7 @@ private struct ScheduleProjection: Codable {
 }
 
 /// Device-only Keychain: team owner secret must not join share sheets, URL logs or cloud backups.
-private enum RegistrySecrets {
+enum RegistrySecrets {
     static func load(_ localTeamId: String) throws -> Credentials? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "com.infinityball.pitchpact.registry", kSecAttrAccount as String: localTeamId,
@@ -60,7 +60,7 @@ private final class RegistryNoRedirect: NSObject, URLSessionTaskDelegate, @unche
                     newRequest: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
 private let registryNoRedirect = RegistryNoRedirect()
-private struct RegistryTransport: Sendable {
+struct RegistryTransport: Sendable {
     let endpoint: String
     let key: String?
     /// Consensus bodies come from the KMP facade; never re-encode them as Swift strings.
@@ -111,7 +111,7 @@ private struct RegistryTransport: Sendable {
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
-private enum ConsensusOutboxStore {
+enum ConsensusOutboxStore {
     static func load(_ endpoint: String, _ link: String, _ team: String) throws -> String? {
         guard let url = fileURL(endpoint, link, team) else { throw CocoaError(.fileReadUnknown) }
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -319,6 +319,9 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     private func refresh(_ c: Credentials) async throws {
         inbox = try await transport.call("GET", "/v0/registry/teams/\(c.team.id)/link-requests", body: Optional<Int>.none)
         links = try await transport.call("GET", "/v0/registry/teams/\(c.team.id)/links", body: Optional<Int>.none)
+        for link in links where link.state == "active" {
+            UserDefaults.standard.set(try JSONEncoder().encode(link), forKey: "registry.link.\(link.id)")
+        }
         schedule = try await transport.call("GET", "/v0/registry/teams/\(c.team.id)/schedule", body: Optional<Int>.none)
     }
     /// Official results come only from the shared KMP rule over server snapshots (accepted-only).

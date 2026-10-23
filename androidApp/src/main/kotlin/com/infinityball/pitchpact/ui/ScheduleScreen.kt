@@ -35,6 +35,7 @@ import java.util.UUID
         val homeName = teamStore.teams().firstOrNull { it.id == fixture?.homeTeamId }?.name ?: "Home"
         val awayName = teamStore.teams().firstOrNull { it.id == fixture?.awayTeamId }?.name ?: "Away"
         MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName,
+            fixtureHomeTeamId = fixture?.homeTeamId, fixtureAwayTeamId = fixture?.awayTeamId,
             coordinatedLinkId = fixture?.coordinatedLinkId,
             official = fixture?.officialHome?.let { h -> fixture.officialAway?.let { "$h-$it" } }) { scoring = null }
         return

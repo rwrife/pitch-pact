@@ -70,6 +70,7 @@ struct ScheduleView: View {
                 Section("Availability · \(game.title)") {
                     NavigationLink("Score match") {
                         MatchDayView(fixtureId: game.id, homeTeam: teamName(game.homeTeamId), awayTeam: teamName(game.awayTeamId),
+                                     fixtureHomeTeamId: game.homeTeamId, fixtureAwayTeamId: game.awayTeamId,
                                      coordinatedLinkId: game.coordinatedLinkId,
                                      official: game.officialHome.flatMap { h in game.officialAway.map { "\(h)-\($0)" } })
                     }
