@@ -1,6 +1,7 @@
 package com.infinityball.pitchpact.server
 
 import com.infinityball.pitchpact.dto.*
+import com.infinityball.pitchpact.domain.*
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -118,5 +119,114 @@ class RegistryTest {
         assertEquals(HttpStatusCode.OK, deleted.status)
         assertFalse(Files.readString(dir.resolve("registry-state.json")).contains("Patient FC"))
         assertFalse(Files.readString(dir.resolve("registry-state.json")).contains(a.ownerKey))
+    }
+
+    @Test fun consensusTwoScorerHandshakeAuthorizationAndLedger() = testApplication {
+        val dir = Files.createTempDirectory("registry-consensus")
+        application { appModule(registryRepository = RegistryRepository(dir)) }
+        val home = client.register("Home Reds", "home-consensus")
+        val away = client.register("Away Blues", "away-consensus")
+        val link = client.link(home, away)
+        val match = "fixture-consensus-1"
+        val goal = LedgerEvent.Event("goal-home-1", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9))
+        val change = ScoreChange("change-home-1", match, Side.HOME, goal.eventId, ScoreChangeAction.ADD)
+        fun submitPayload(c: ScoreChange, g: LedgerEvent, key: String) =
+            codec.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(c, g, "consensus-submit-$key"))
+        suspend fun review(key: String, id: String, action: ConsensusAction, actionKey: String) =
+            client.send("/v0/links/${link.id}/consensus/changes/${id}/${action.name.lowercase()}", codec.encodeToString(ConsensusReview.serializer(), ConsensusReview(actionKey)), key)
+        val submitted = codec.decodeFromString(ConsensusDecision.serializer(), client.send(
+            "/v0/links/${link.id}/consensus/changes", submitPayload(change, goal, "submit-home-1"), home.ownerKey).bodyAsText())
+        assertEquals(ConsensusState.PENDING, submitted.state)
+        assertEquals(submitted, codec.decodeFromString(ConsensusDecision.serializer(), client.send(
+            "/v0/links/${link.id}/consensus/changes", submitPayload(change, goal, "submit-home-1"), home.ownerKey).bodyAsText()))
+        assertEquals(HttpStatusCode.Conflict, client.send("/v0/links/${link.id}/consensus/changes",
+            codec.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change.copy(ledgerEventId = "other"), goal, "submit-home-different")), home.ownerKey).status)
+        assertEquals(HttpStatusCode.Forbidden, review(home.ownerKey, change.changeId, ConsensusAction.ACCEPT, "self-accept-00000001").status)
+        // Opposing team can submit its own simultaneous pending change.
+        val awayGoal = LedgerEvent.Event("goal-away-1", Side.AWAY, 1_100, EventPayload.Goal(Side.AWAY, 11))
+        val awayChange = ScoreChange("change-away-1", match, Side.AWAY, awayGoal.eventId, ScoreChangeAction.ADD)
+        assertEquals(ConsensusState.PENDING, codec.decodeFromString(ConsensusDecision.serializer(), client.send(
+            "/v0/links/${link.id}/consensus/changes", submitPayload(awayChange, awayGoal, "submit-away-1"), away.ownerKey).bodyAsText()).state)
+        val snapshot = codec.decodeFromString(ConsensusSnapshot.serializer(), client.read("/v0/links/${link.id}/consensus?matchId=$match", home.ownerKey).bodyAsText())
+        assertEquals("0-0", "${snapshot.officialScore.homeScore}-${snapshot.officialScore.awayScore}")
+        assertEquals(2, snapshot.pendingChanges.size)
+        assertFalse(snapshot.official)
+        // Accepting one side's change only makes that side official.
+        val accepted = codec.decodeFromString(ConsensusDecision.serializer(), review(away.ownerKey, change.changeId, ConsensusAction.ACCEPT, "accept-home-0000001").bodyAsText())
+        assertEquals(ConsensusState.ACCEPTED, accepted.state)
+        val official = codec.decodeFromString(ConsensusSnapshot.serializer(), client.read("/v0/links/${link.id}/consensus?matchId=$match", away.ownerKey).bodyAsText())
+        assertEquals("1-0", "${official.officialScore.homeScore}-${official.officialScore.awayScore}")
+        assertEquals(1, official.pendingChanges.size)
+        // Reject opposing goal; terminal records remain forever.
+        val awayRejected = codec.decodeFromString(ConsensusDecision.serializer(), review(home.ownerKey, awayChange.changeId, ConsensusAction.REJECT, "reject-away-0000001").bodyAsText())
+        assertEquals(ConsensusState.REJECTED, awayRejected.state)
+        // The opposing side cannot withdraw another team's change.
+        assertEquals(HttpStatusCode.Conflict, review(away.ownerKey, change.changeId, ConsensusAction.WITHDRAW, "withdraw-wrong-000001").status)
+        val ledger = client.read("/v0/links/${link.id}/consensus/ledger?matchId=$match", home.ownerKey).bodyAsText()
+        assertTrue(ledger.contains("change-home-1") && ledger.contains("ACCEPTED") && ledger.contains("change-away-1") && ledger.contains("REJECTED"))
+        // Whistle before opposing change is resolved cannot mark match official.
+        val whistle = codec.encodeToString(ConsensusWhistle.serializer(), ConsensusWhistle(match, Side.HOME, "whistle-home-00000001"))
+        assertFalse(codec.decodeFromString(ConsensusSnapshot.serializer(), client.send("/v0/links/${link.id}/consensus/whistle", whistle, home.ownerKey).bodyAsText()).official)
+        assertEquals(HttpStatusCode.BadRequest, client.send("/v0/links/${link.id}/consensus/whistle",
+            codec.encodeToString(ConsensusWhistle.serializer(), ConsensusWhistle(match, Side.AWAY, "wrong-side-000000001")), home.ownerKey).status)
+        val firstFinal = codec.decodeFromString(ConsensusSnapshot.serializer(), client.send("/v0/links/${link.id}/consensus/whistle", whistle, home.ownerKey).bodyAsText())
+        assertEquals(0, firstFinal.pendingChanges.size)
+        assertFalse(firstFinal.official, "one final whistle is never enough")
+        val finalAway = codec.decodeFromString(ConsensusSnapshot.serializer(), client.send("/v0/links/${link.id}/consensus/whistle",
+            codec.encodeToString(ConsensusWhistle.serializer(), ConsensusWhistle(match, Side.AWAY, "whistle-away-00000001")), away.ownerKey).bodyAsText())
+        assertTrue(finalAway.official)
+        assertEquals("1-0", "${finalAway.officialScore.homeScore}-${finalAway.officialScore.awayScore}")
+        assertEquals(2, finalAway.events.size)
+    }
+
+    @Test fun linkedBroadcastRequiresTeamCapabilityAndMirrorsConsensusWithoutLosingOtherEvents() = testApplication {
+        val registry = RegistryRepository(Files.createTempDirectory("registry-linked-broadcast"))
+        val broadcast = BroadcastRepository(Files.createTempDirectory("broadcast-linked-consensus"))
+        application { appModule(broadcastRepository = broadcast, registryRepository = registry) }
+        val home = client.register("Broadcast Reds", "home-broadcast")
+        val away = client.register("Broadcast Blues", "away-broadcast")
+        val link = client.link(home, away)
+        val match = "broadcast-match-1"
+        val create = codec.encodeToString(BroadcastCreate.serializer(), BroadcastCreate(match, "Reds", "Blues", teamLinkId = link.id, idempotencyKey = "broadcast-create-0001"))
+        assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create).status)
+        assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create, "spectator-code").status)
+        val started = codec.decodeFromString(BroadcastStarted.serializer(), client.send("/v0/broadcasts", create, home.ownerKey).bodyAsText())
+        val goal = LedgerEvent.Event("linked-goal-1", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9))
+        val change = ScoreChange("linked-change-1", match, Side.HOME, goal.eventId, ScoreChangeAction.ADD)
+        client.send("/v0/links/${link.id}/consensus/changes", codec.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, goal, "linked-submit-0001")), home.ownerKey)
+        val pending = codec.decodeFromString(SpectatorView.serializer(), client.get("/v0/spectate/${started.spectatorCode}").bodyAsText())
+        assertEquals(0, pending.officialScore.homeScore)
+        assertEquals(listOf(change.changeId), pending.pendingChanges.map { it.changeId })
+        assertEquals(listOf(goal.eventId), pending.events.map { it.eventId })
+        assertEquals(HttpStatusCode.NotFound, client.post("/v0/spectate/${started.spectatorCode}").status)
+        client.send("/v0/links/${link.id}/consensus/changes/${change.changeId}/accept", "{\"idempotencyKey\":\"linked-accept-0001\"}", away.ownerKey)
+        val accepted = codec.decodeFromString(SpectatorView.serializer(), client.get("/v0/spectate/${started.spectatorCode}").bodyAsText())
+        assertEquals(1, accepted.officialScore.homeScore)
+        assertTrue(accepted.pendingChanges.isEmpty())
+        assertEquals(listOf(goal.eventId), accepted.events.map { it.eventId })
+    }
+
+    @Test fun consensusStateIsPerMatchAndDeletingTeamErasesIt() = testApplication {
+        val dir = Files.createTempDirectory("registry-consensus-delete")
+        application { appModule(registryRepository = RegistryRepository(dir)) }
+        val home = client.register("Match A Reds", "home-match-a")
+        val away = client.register("Match A Blues", "away-match-a")
+        val link = client.link(home, away)
+        suspend fun submit(match: String, key: String): Pair<ScoreChange, LedgerEvent> {
+            val goal = LedgerEvent.Event("goal-$match", Side.HOME, 1_000, EventPayload.Goal(Side.HOME, 9))
+            val change = ScoreChange("change-$match", match, Side.HOME, goal.eventId, ScoreChangeAction.ADD)
+            assertEquals(HttpStatusCode.OK, client.send("/v0/links/${link.id}/consensus/changes",
+                codec.encodeToString(ConsensusSubmit.serializer(), ConsensusSubmit(change, goal, "submit-$match")), home.ownerKey).status)
+            return change to goal
+        }
+        val (first, _) = submit("match-one", "one")
+        val (second, _) = submit("match-two", "two")
+        assertEquals("0-0", codec.decodeFromString(ConsensusSnapshot.serializer(), client.read("/v0/links/${link.id}/consensus?matchId=match-one", home.ownerKey).bodyAsText()).officialScore.let { "${it.homeScore}-${it.awayScore}" })
+        assertEquals(1, codec.decodeFromString(ConsensusSnapshot.serializer(), client.read("/v0/links/${link.id}/consensus?matchId=match-two", away.ownerKey).bodyAsText()).pendingChanges.size)
+        // A change from one match cannot be reviewed in another link's match path.
+        assertEquals(HttpStatusCode.OK, client.send("/v0/links/${link.id}/consensus/changes/${first.changeId}/accept", "{\"idempotencyKey\":\"accept-first-0000001\"}", away.ownerKey).status)
+        assertEquals(HttpStatusCode.OK, client.send("/v0/links/${link.id}/consensus/changes/${second.changeId}/reject", "{\"idempotencyKey\":\"reject-second-000001\"}", away.ownerKey).status)
+        assertEquals(HttpStatusCode.OK, client.delete("/v0/registry/teams/${home.team.id}") { header(HttpHeaders.Authorization, "Bearer ${home.ownerKey}") }.status)
+        assertEquals(HttpStatusCode.NotFound, client.read("/v0/links/${link.id}/consensus?matchId=match-one", away.ownerKey).status)
     }
 }

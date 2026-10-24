@@ -90,4 +90,124 @@ struct PitchPactTests {
         #expect(standing.count == 2)
         #expect(standing.allSatisfy { $0.pendingFixtures == 1 && $0.played == 0 })
     }
+
+    @MainActor
+    @Test("consensus facade bridge drives scoreboard, pending rows and record ledger")
+    func consensusFacadeBridge() throws {
+        let rules = ConsensusFacade()
+        #expect(rules.sideFor(firstTeamId: "teamA", secondTeamId: "teamB", myTeamId: "teamA") == "HOME")
+        #expect(rules.sideFor(firstTeamId: "teamA", secondTeamId: "teamB", myTeamId: "teamB") == "AWAY")
+
+        let submitBody = try rules.submitGoal(
+            matchId: "match-1",
+            side: "HOME",
+            changeId: "change-1",
+            eventId: "event-1",
+            epoch: 1_700_000_000_000,
+            jersey: 9,
+            idempotencyKey: "idem-1"
+        )
+        #expect(submitBody.contains("change-1"))
+        #expect(submitBody.contains("event-1"))
+
+        // Stable wire fixture exercises the native bridge; server integration owns
+        // live two-party authorization and the adversarial contested-half run.
+        let sampleSnapshot = """
+        {
+          "matchId": "m1", "events": [],
+          "officialScore": {"matchId": "m1", "homeScore": 1, "awayScore": 0},
+          "pendingChanges": [],
+          "decisions": [
+            {
+              "change": {"changeId": "c1", "matchId": "m1", "submittedBy": "home", "ledgerEventId": "e1", "action": "add"},
+              "event": {"type": "event", "eventId": "e1", "side": "home", "recordedAtEpochMillis": 1000,
+                        "payload": {"type": "goal", "side": "home", "jerseyNumber": 9}},
+              "state": "accepted", "actor": "away", "submittedAt": 1000, "resolvedAt": 1100
+            }
+          ],
+          "finalWhistles": ["home", "away"], "official": true
+        }
+        """
+
+        let scoreboard = try rules.scoreboard(snapshotJson: sampleSnapshot)
+        #expect(scoreboard.contains("OFFICIAL 1-0"))
+        #expect(scoreboard.contains("FINAL (official)"))
+        #expect(scoreboard.contains("PENDING REVIEW: 0"))
+
+        let ledger = try rules.recordLedger(snapshotJson: sampleSnapshot)
+        #expect(ledger.contains("ACCEPTED"))
+        #expect(ledger.contains("goal #9 (HOME)"))
+        #expect(ledger.contains("resolved by AWAY"))
+
+        let pendingSnapshot = """
+        {
+          "matchId": "m1", "events": [],
+          "officialScore": {"matchId": "m1", "homeScore": 0, "awayScore": 0},
+          "pendingChanges": [{"changeId": "c2", "submittedBy": "home", "state": "pending"}],
+          "decisions": [
+            {
+              "change": {"changeId": "c2", "matchId": "m1", "submittedBy": "home", "ledgerEventId": "e2", "action": "add"},
+              "event": {"type": "event", "eventId": "e2", "side": "home", "recordedAtEpochMillis": 2000,
+                        "payload": {"type": "goal", "side": "home", "jerseyNumber": 10}},
+              "state": "pending", "actor": "home", "submittedAt": 2000
+            }
+          ],
+          "finalWhistles": [], "official": false
+        }
+        """
+
+        let homeRows = try rules.pendingRows(snapshotJson: pendingSnapshot, mySide: "HOME")
+        #expect(homeRows.count == 1)
+        #expect(homeRows[0].contains("Awaiting opponent"))
+        #expect(homeRows[0].hasSuffix("|withdraw"))
+
+        let awayRows = try rules.pendingRows(snapshotJson: pendingSnapshot, mySide: "AWAY")
+        #expect(awayRows.count == 1)
+        #expect(awayRows[0].contains("Review:"))
+        #expect(awayRows[0].hasSuffix("|review"))
+    }
+
+    @MainActor
+    @Test("consensus outbox bridge preserves exact queued writes")
+    func consensusOutboxBridge() throws {
+        let rules = ConsensusFacade()
+        let first = try rules.outboxEnqueue(outboxJson: rules.outboxNew(), id: "one", path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"key-one\"}")
+        let queued = try rules.outboxEnqueue(outboxJson: first, id: "two", path: "/v0/links/L/consensus/changes/one/accept", body: "{\"idempotencyKey\":\"key-two\"}")
+        let entry = try rules.outboxHead(outboxJson: queued)
+        #expect(try rules.outboxId(entryJson: entry) == "one")
+        #expect(try rules.outboxPath(entryJson: entry).hasSuffix("/consensus/changes"))
+        #expect(try rules.outboxBody(entryJson: entry).contains("key-one"))
+        let refused = try rules.outboxRefuse(outboxJson: queued, id: "one", status: 409)
+        #expect(try rules.outboxSummary(outboxJson: refused) == "1 waiting to send · 1 refused by server")
+    }
+
+    @MainActor
+    @Test("restart replays the exact bytes and order the pre-crash app queued")
+    func consensusOutboxRestartReplay() throws {
+        let rules = ConsensusFacade()
+        // Pre-crash session: queue three writes and deliver only the first.
+        let one = try rules.outboxEnqueue(outboxJson: rules.outboxNew(), id: "a",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"k-a\",\"jersey\":9}")
+        let two = try rules.outboxEnqueue(outboxJson: one, id: "b",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"k-b\",\"jersey\":10}")
+        let three = try rules.outboxEnqueue(outboxJson: two, id: "c",
+            path: "/v0/links/L/consensus/changes/a/accept", body: "{\"idempotencyKey\":\"k-c\"}")
+        let crashed = try rules.outboxDelivered(outboxJson: three, id: "a")
+
+        // Process death: only the persisted string survives. A fresh facade must
+        // resume the queue byte-for-byte, in order, duplicates ignored.
+        let revived = try rules.outboxEnqueue(outboxJson: crashed, id: "b",
+            path: "/v0/links/L/consensus/changes", body: "{\"idempotencyKey\":\"tampered\"}")
+        let head = try rules.outboxHead(outboxJson: revived)
+        #expect(try rules.outboxId(entryJson: head) == "b")
+        #expect(try rules.outboxBody(entryJson: head).contains("k-b"))
+        #expect(try rules.outboxSummary(outboxJson: revived) == "2 waiting to send")
+        let after = try rules.outboxDelivered(outboxJson: revived, id: "b")
+        let next = try rules.outboxHead(outboxJson: after)
+        #expect(try rules.outboxId(entryJson: next) == "c")
+        #expect(try rules.outboxPath(entryJson: next).hasSuffix("/consensus/changes/a/accept"))
+        // Only the head may be delivered — out-of-order replay is refused loudly.
+        do { _ = try rules.outboxDelivered(outboxJson: after, id: "b"); Issue.record("expected head-only delivery") }
+        catch { /* @Throws bridges to NSError: refusal is the expected path */ }
+    }
 }

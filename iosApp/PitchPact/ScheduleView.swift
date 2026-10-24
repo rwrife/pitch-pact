@@ -57,7 +57,11 @@ struct ScheduleView: View {
                                 }
                             }
                             Text(Date(timeIntervalSince1970: Double(fixture.startEpochMillis) / 1000), style: .date)
-                            if fixture.resultStatus == .PENDING { Text("Result pending review").foregroundStyle(.orange) }
+                            if let h = fixture.officialHome, let a = fixture.officialAway {
+                                Text("Official \(h)-\(a)\(fixture.resultStatus == .PENDING ? " (result pending opponent confirmation)" : "")")
+                                    .foregroundStyle(fixture.resultStatus == .PENDING ? .orange : .primary)
+                                    .accessibilityIdentifier("fixture.result.\(fixture.id)")
+                            }
                         }
                     }
                 }
@@ -65,7 +69,10 @@ struct ScheduleView: View {
             if let game = fixtures.first(where: { $0.id == selectedFixtureId }) {
                 Section("Availability · \(game.title)") {
                     NavigationLink("Score match") {
-                        MatchDayView(fixtureId: game.id, homeTeam: teamName(game.homeTeamId), awayTeam: teamName(game.awayTeamId))
+                        MatchDayView(fixtureId: game.id, homeTeam: teamName(game.homeTeamId), awayTeam: teamName(game.awayTeamId),
+                                     fixtureHomeTeamId: game.homeTeamId, fixtureAwayTeamId: game.awayTeamId,
+                                     coordinatedLinkId: game.coordinatedLinkId,
+                                     official: game.officialHome.flatMap { h in game.officialAway.map { "\(h)-\($0)" } })
                     }
                     let roster = ((try? AppTeamStore.shared.players(teamId: game.homeTeamId)) ?? []) +
                         ((try? AppTeamStore.shared.players(teamId: game.awayTeamId)) ?? [])
