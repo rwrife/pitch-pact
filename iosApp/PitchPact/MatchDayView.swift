@@ -185,7 +185,7 @@ import PitchPactStore
                 let next: String
                 if (200...299).contains(status) { next = try consensusRules.outboxDelivered(outboxJson: outbox, id: id) }
                 else if (400...499).contains(status) { next = try consensusRules.outboxRefuse(outboxJson: outbox, id: id, status: status) }
-                else break
+                else { break }
                 try ConsensusOutboxStore.save(endpoint, parties.link.id, parties.creds.team.id, next)
                 outbox = next
             }
