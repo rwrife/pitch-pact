@@ -157,7 +157,7 @@ import PitchPactStore
         endpoint = UserDefaults.standard.string(forKey: "registry.endpoint") ?? endpoint
         do {
             outbox = try ConsensusOutboxStore.load(endpoint, link.id, parties.1.team.id) ?? consensusRules.outboxNew()
-        } catch { error = error.isEmpty ? "Consensus outbox unavailable; local capture retained" : "\(error) · Consensus outbox unavailable" }
+        } catch { self.error = self.error.isEmpty ? "Consensus outbox unavailable; local capture retained" : "\(self.error) · Consensus outbox unavailable" }
     }
     private func enqueueGoal(eventId: String, parties: (link: TeamLink, creds: Credentials)) {
         guard !eventId.isEmpty, Set([parties.link.firstTeamId, parties.link.secondTeamId]) == Set([fixtureHomeTeamId, fixtureAwayTeamId].compactMap { $0 }) else {
@@ -184,7 +184,7 @@ import PitchPactStore
                 let status = await transport.statusOf("POST", path, body: body)
                 let next: String
                 if (200...299).contains(status) { next = try consensusRules.outboxDelivered(outboxJson: outbox, id: id) }
-                else if (400...499).contains(status) { next = try consensusRules.outboxRefuse(outboxJson: outbox, id: id, status: status) }
+                else if (400...499).contains(status) { next = try consensusRules.outboxRefuse(outboxJson: outbox, id: id, status: Int32(status)) }
                 else { break }
                 try ConsensusOutboxStore.save(endpoint, parties.link.id, parties.creds.team.id, next)
                 outbox = next
