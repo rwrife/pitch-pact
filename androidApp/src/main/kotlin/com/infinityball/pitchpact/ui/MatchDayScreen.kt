@@ -67,7 +67,13 @@ import java.util.UUID
     val creds = credentialPairs.singleOrNull()
     var outbox by remember(registryEndpoint, coordinatedLinkId, creds?.team?.id) { mutableStateOf(
         try {
-            if (link == null || creds == null) "" else consensusStore.load(registryEndpoint, link.id, creds.team.id) ?: consensus.outboxNew()
+            // Validate through the shared facade so a corrupt file fails closed
+            // instead of being silently overwritten by the next save.
+            if (link == null || creds == null) "" else {
+                val saved = consensusStore.load(registryEndpoint, link.id, creds.team.id) ?: consensus.outboxNew()
+                consensus.outboxSummary(saved)
+                saved
+            }
         } catch (e: Exception) { "" }
     ) }
     var outboxFailed by remember { mutableStateOf(link != null && creds != null && outbox.isEmpty()) }

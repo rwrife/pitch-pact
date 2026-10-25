@@ -13,6 +13,12 @@ class ConsensusFacadeTest {
     private val json = PitchPactJson.codec
     private val facade = ConsensusFacade()
 
+    @Test fun corruptDurableOutboxMustNotBecomeAnEmptyWritableQueue() {
+        assertFails { facade.outboxSummary("not-json") }
+        val queued = facade.outboxEnqueue(facade.outboxNew(), "goal-1", "/v0/links/L/consensus/changes", "{\"idempotencyKey\":\"goal-1\"}")
+        assertEquals("1 waiting to send", facade.outboxSummary(queued))
+    }
+
     private fun goal(id: String, side: Side) = LedgerEvent.Event(id, side, 1_000, EventPayload.Goal(side, 9))
     private fun decision(id: String, side: Side, state: ConsensusState) = ConsensusDecision(
         ScoreChange(id, "m1", side, "e-$id", ScoreChangeAction.ADD), goal("e-$id", side), state, side, 10, if (state == ConsensusState.PENDING) null else 20)

@@ -156,8 +156,14 @@ import PitchPactStore
         linkedParties = parties
         endpoint = UserDefaults.standard.string(forKey: "registry.endpoint") ?? endpoint
         do {
-            outbox = try ConsensusOutboxStore.load(endpoint, link.id, parties.1.team.id) ?? consensusRules.outboxNew()
-        } catch { self.error = self.error.isEmpty ? "Consensus outbox unavailable; local capture retained" : "\(self.error) · Consensus outbox unavailable" }
+            let saved = try ConsensusOutboxStore.load(endpoint, link.id, parties.1.team.id) ?? consensusRules.outboxNew()
+            _ = try consensusRules.outboxSummary(outboxJson: saved) // Refuse corrupt files; never overwrite queued writes.
+            outbox = saved
+            outboxFailed = false
+        } catch {
+            outboxFailed = true
+            self.error = "Consensus outbox unavailable; local capture retained. Repair storage before sending."
+        }
     }
     private func enqueueGoal(eventId: String, parties: (link: TeamLink, creds: Credentials)) {
         guard !eventId.isEmpty, Set([parties.link.firstTeamId, parties.link.secondTeamId]) == Set([fixtureHomeTeamId, fixtureAwayTeamId].compactMap { $0 }) else {
