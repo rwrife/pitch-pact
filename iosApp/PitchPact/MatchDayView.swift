@@ -127,7 +127,7 @@ import PitchPactStore
                     SecureField("Match capability", text: $capability)
                     Button("Sync queued events") { Task { await sync() } }.disabled(syncing).frame(minHeight: 44)
                 }
-                BroadcastControls(matchId: fixtureId, home: homeTeam, away: awayTeam, endpoint: endpoint, capability: capability, snapshot: {
+                BroadcastControls(matchId: fixtureId, home: homeTeam, away: awayTeam, endpoint: coordinatedLinkId == nil ? endpoint : (UserDefaults.standard.string(forKey: "registry.endpoint") ?? endpoint), capability: coordinatedLinkId == nil ? capability : (linkedParties?.creds.ownerKey ?? ""), teamLinkId: coordinatedLinkId == nil ? nil : linkedParties?.link.id, snapshot: {
                     let prepared = try rules.prepareSync(json: json)
                     try AppTeamStore.shared.saveMatchDay(id: fixtureId, sharedJSON: prepared)
                     json = prepared

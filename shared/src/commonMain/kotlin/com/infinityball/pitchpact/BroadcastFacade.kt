@@ -6,8 +6,16 @@ import com.infinityball.pitchpact.dto.*
 /** UI-thread bridge. The platform owns networking and secret storage, not scoring rules. */
 class BroadcastFacade {
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
-    fun create(matchId: String, home: String, away: String, id: String): String =
-        PitchPactJson.codec.encodeToString(BroadcastCreate.serializer(), BroadcastCreate(matchId, home, away, idempotencyKey = id))
+    fun create(matchId: String, home: String, away: String, id: String, teamLinkId: String? = null): String {
+        val linkedMatch = if (teamLinkId != null) {
+            require(teamLinkId.matches(Regex("[A-Za-z0-9_-]{1,128}")))
+            require(matchId.startsWith("coordinated:")) { "Linked broadcast requires coordinated fixture" }
+            matchId.removePrefix("coordinated:")
+        } else matchId
+        require(linkedMatch.matches(Regex("[A-Za-z0-9_-]{1,128}")))
+        return PitchPactJson.codec.encodeToString(BroadcastCreate.serializer(),
+            BroadcastCreate(linkedMatch, home, away, teamLinkId = teamLinkId, idempotencyKey = id))
+    }
     @Throws(IllegalArgumentException::class, IllegalStateException::class)
     fun update(json: String, seq: Long, id: String, uptime: Long, epoch: Long, boot: String): String {
         val state = MatchDayCodec.decode(json)

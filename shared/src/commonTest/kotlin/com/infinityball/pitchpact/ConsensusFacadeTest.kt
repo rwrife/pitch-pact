@@ -13,6 +13,18 @@ class ConsensusFacadeTest {
     private val json = PitchPactJson.codec
     private val facade = ConsensusFacade()
 
+    @Test fun linkedBroadcastUsesServerMatchIdAndPartyLink() {
+        val payload = PitchPactJson.codec.decodeFromString(BroadcastCreate.serializer(),
+            BroadcastFacade().create("coordinated:fixture-1", "Reds", "Blues", "broadcast-create-0001", "link-1"))
+        assertEquals("fixture-1", payload.matchId)
+        assertEquals("link-1", payload.teamLinkId)
+        assertFailsWith<IllegalArgumentException> {
+            BroadcastFacade().create("unlinked", "Reds", "Blues", "broadcast-create-0001", "link-1")
+        }
+        assertNull(PitchPactJson.codec.decodeFromString(BroadcastCreate.serializer(),
+            BroadcastFacade().create("local-1", "Reds", "Blues", "broadcast-create-0002")).teamLinkId)
+    }
+
     @Test fun corruptDurableOutboxMustNotBecomeAnEmptyWritableQueue() {
         assertFails { facade.outboxSummary("not-json") }
         val queued = facade.outboxEnqueue(facade.outboxNew(), "goal-1", "/v0/links/L/consensus/changes", "{\"idempotencyKey\":\"goal-1\"}")

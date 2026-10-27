@@ -121,7 +121,10 @@ import java.util.UUID
         }
         OutlinedTextField(endpoint, { endpoint = it }, label = { Text("Server endpoint (HTTPS)") })
         OutlinedTextField(capability, { capability = it }, label = { Text("Match capability") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-        BroadcastControls(id, home, away, endpoint, capability, boot, snapshot = {
+        BroadcastControls(id, home, away,
+            if (coordinatedLinkId == null) endpoint else registryEndpoint,
+            if (coordinatedLinkId == null) capability else creds?.ownerKey.orEmpty(),
+            boot, teamLinkId = if (coordinatedLinkId != null) link?.id else null, snapshot = {
             val prepared = MatchDayCodec.decode(rules.prepareSync(json))
             store.save(prepared); json = MatchDayCodec.encode(prepared); json
         })

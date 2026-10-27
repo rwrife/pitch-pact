@@ -187,7 +187,8 @@ class RegistryTest {
         val away = client.register("Broadcast Blues", "away-broadcast")
         val link = client.link(home, away)
         val match = "broadcast-match-1"
-        val create = codec.encodeToString(BroadcastCreate.serializer(), BroadcastCreate(match, "Reds", "Blues", teamLinkId = link.id, idempotencyKey = "broadcast-create-0001"))
+        // Production clients encode coordinated:fixture IDs through the shared facade.
+        val create = com.infinityball.pitchpact.BroadcastFacade().create("coordinated:$match", "Reds", "Blues", "broadcast-create-0001", link.id)
         assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create).status)
         assertEquals(HttpStatusCode.Forbidden, client.send("/v0/broadcasts", create, "spectator-code").status)
         val started = codec.decodeFromString(BroadcastStarted.serializer(), client.send("/v0/broadcasts", create, home.ownerKey).bodyAsText())

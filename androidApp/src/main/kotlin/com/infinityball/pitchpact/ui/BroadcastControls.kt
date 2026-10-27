@@ -28,6 +28,7 @@ import java.util.UUID
     endpoint: String,
     capability: String,
     boot: String,
+    teamLinkId: String? = null,
     snapshot: () -> String,
 ) {
     val facade = remember { BroadcastFacade() }
@@ -91,7 +92,7 @@ import java.util.UUID
                     scope.launch {
                         sending = true
                         try {
-                            val body = facade.create(matchId, home, away, UUID.randomUUID().toString())
+                            val body = facade.create(matchId, home, away, UUID.randomUUID().toString(), teamLinkId)
                             val response = withContext(Dispatchers.IO) { BroadcastTransport.start(endpoint, capability, body) }
                             persist(BroadcastCheckpoint(endpoint, response))
                             message = "Broadcast started"
