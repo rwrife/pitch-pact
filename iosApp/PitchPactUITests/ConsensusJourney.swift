@@ -106,6 +106,7 @@ final class ConsensusJourney: XCTestCase {
         let homeApp = XCUIApplication()
         homeApp.launchArguments = ["--m7-network-ui-test"]
         homeApp.launchEnvironment = [
+            "PITCH_TEST_MATCH": matchId,
             "PITCH_TEST_ENDPOINT": endpoint,
             "PITCH_TEST_LINK": link,
             "PITCH_TEST_HOME": home,
@@ -117,13 +118,8 @@ final class ConsensusJourney: XCTestCase {
 
         let matchField = homeApp.textFields["consensus.matchId"]
         XCTAssertTrue(matchField.waitForExistence(timeout: 20))
-        // Number pad has no dismiss key; fill jersey first, then switch to
-        // match field and dismiss its standard keyboard before scrolling.
-        let jerseyField = homeApp.textFields["consensus.jersey"]
-        jerseyField.tap()
-        jerseyField.typeText("9")
-        matchField.tap()
-        matchField.typeText(matchId + "\n")
+        XCTAssertEqual(matchField.value as? String, matchId)
+        XCTAssertEqual(homeApp.textFields["consensus.jersey"].value as? String, "9")
 
         let submit = homeApp.buttons["consensus.submit"]
         for _ in 0..<4 where !submit.isHittable { homeApp.swipeUp() }
@@ -136,6 +132,7 @@ final class ConsensusJourney: XCTestCase {
         let awayApp = XCUIApplication()
         awayApp.launchArguments = ["--m7-network-ui-test"]
         awayApp.launchEnvironment = [
+            "PITCH_TEST_MATCH": matchId,
             "PITCH_TEST_ENDPOINT": endpoint,
             "PITCH_TEST_LINK": link,
             "PITCH_TEST_HOME": home,
@@ -147,8 +144,7 @@ final class ConsensusJourney: XCTestCase {
 
         let awayMatch = awayApp.textFields["consensus.matchId"]
         XCTAssertTrue(awayMatch.waitForExistence(timeout: 20))
-        awayMatch.tap()
-        awayMatch.typeText(matchId + "\n")
+        XCTAssertEqual(awayMatch.value as? String, matchId)
 
         let refresh = awayApp.buttons["Refresh official score"]
         for _ in 0..<4 where !refresh.isHittable { awayApp.swipeUp() }

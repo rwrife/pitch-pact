@@ -371,8 +371,11 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     let transport: RegistryTransport
     let endpoint: String
     var onSnapshot: (String) throws -> Void = { _ in }
-    @State private var matchId = ""
-    @State private var jersey = ""
+    // Test-only fixture inputs bypass flaky simulator keyboard focus, never production defaults.
+    @State private var matchId = ProcessInfo.processInfo.arguments.contains("--m7-network-ui-test")
+        ? (ProcessInfo.processInfo.environment["PITCH_TEST_MATCH"] ?? "") : ""
+    @State private var jersey = ProcessInfo.processInfo.arguments.contains("--m7-network-ui-test")
+        ? "9" : ""
     @State private var snapshot = ""
     @State private var message = ""
     @State private var outbox = ""
