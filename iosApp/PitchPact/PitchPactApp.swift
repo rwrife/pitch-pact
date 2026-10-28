@@ -14,7 +14,9 @@ struct PitchPactApp: App {
     var body: some Scene {
         WindowGroup {
             NavigationStack {
-                if ProcessInfo.processInfo.arguments.contains("--m7-ui-test") {
+                if ProcessInfo.processInfo.arguments.contains("--m7-network-ui-test") {
+                    NetworkConsensusTestView()
+                } else if ProcessInfo.processInfo.arguments.contains("--m7-ui-test") {
                     ConsensusDemoView()
                 } else if ProcessInfo.processInfo.arguments.contains("--m4-ui-test") {
                     MatchDayView(fixtureId: "m4-ui-fixture")

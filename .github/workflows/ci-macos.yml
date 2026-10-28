@@ -126,9 +126,41 @@ jobs:
           key: gradle-macos-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-macos-
 
+      - name: Start loopback consensus server for networked XCUITest
+        run: |
+          set -euo pipefail
+          # Ephemeral local server on loopback port 8089 gives the native iOS
+          # XCUITest exact parity with Android's loopback journey: real Ktor,
+          # real HTTP endpoints, real authorization and two-sideline handshake.
+          export PORT=8089
+          export MATCH_DATA_DIRECTORY="$RUNNER_TEMP/server-matches"
+          export BROADCAST_DATA_DIRECTORY="$RUNNER_TEMP/server-broadcasts"
+          export REGISTRY_DATA_DIRECTORY="$RUNNER_TEMP/server-registry"
+          mkdir -p "$MATCH_DATA_DIRECTORY" "$BROADCAST_DATA_DIRECTORY" "$REGISTRY_DATA_DIRECTORY"
+          ./gradlew :server:run --no-daemon > "$RUNNER_TEMP/server.log" 2>&1 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
+          # Wait for server readiness
+          for i in $(seq 1 120); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8089/healthz 2>/dev/null | grep -q '"status":"ok"'; then
+              echo "Server ready on port 8089 after $i checks"
+              break
+            fi
+            sleep 1
+          done
+          curl -s http://127.0.0.1:8089/healthz | grep -q '"status":"ok"' || {
+            echo "::error::Server failed to start on port 8089; log:"
+            cat "$RUNNER_TEMP/server.log"
+            exit 1
+          }
+          # Seed link fixture into ephemeral env file; exports TEST_RUNNER_*
+          python3 .github/scripts/consensus_ui_fixture.py http://127.0.0.1:8089 "$RUNNER_TEMP/consensus_test_env.sh"
+
       - name: xcodebuild test (KMP embedAndSign + hosted unit tests + M4 XCUITest journey)
         run: |
           set -euo pipefail
+          source "$RUNNER_TEMP/consensus_test_env.sh"
+          export TEST_RUNNER_PITCH_REQUIRE_NETWORK_TEST=1
           cd iosApp
           # arm64-only: KMP exports iosSimulatorArm64 (no iosX64 target — none
           # of the fleet builds Intel slices). ARCHS override keeps the lane
@@ -153,6 +185,7 @@ jobs:
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
+            INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking=YES \
             test
 
       - name: Post-build Info.plist assertions

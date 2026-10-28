@@ -349,6 +349,20 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     }
 }
 
+/// Simulator journey hosts the production scorer against a local Ktor server.
+/// Test-only launch data never ships as default credentials or a public endpoint.
+@MainActor struct NetworkConsensusTestView: View {
+    private let env = ProcessInfo.processInfo.environment
+    var body: some View {
+        let link = TeamLink(id: env["PITCH_TEST_LINK"] ?? "", firstTeamId: env["PITCH_TEST_HOME"] ?? "",
+                            secondTeamId: env["PITCH_TEST_AWAY"] ?? "", state: "active")
+        ConsensusSection(link: link, myTeamId: env["PITCH_TEST_TEAM"] ?? "",
+                         transport: RegistryTransport(endpoint: env["PITCH_TEST_ENDPOINT"] ?? "", key: env["PITCH_TEST_KEY"]),
+                         endpoint: env["PITCH_TEST_ENDPOINT"] ?? "")
+            .padding()
+    }
+}
+
 /// M7 two-sideline scorer panel. Transport only: side mapping, wire bodies, labels,
 /// official-vs-pending text and ledger wording all come from the shared KMP facade.
 @MainActor private struct ConsensusSection: View {
