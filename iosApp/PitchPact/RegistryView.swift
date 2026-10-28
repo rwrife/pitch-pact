@@ -356,10 +356,14 @@ private struct RegistryHTTPError: LocalizedError { let code: Int; var errorDescr
     var body: some View {
         let link = TeamLink(id: env["PITCH_TEST_LINK"] ?? "", firstTeamId: env["PITCH_TEST_HOME"] ?? "",
                             secondTeamId: env["PITCH_TEST_AWAY"] ?? "", state: "active")
-        ConsensusSection(link: link, myTeamId: env["PITCH_TEST_TEAM"] ?? "",
-                         transport: RegistryTransport(endpoint: env["PITCH_TEST_ENDPOINT"] ?? "", key: env["PITCH_TEST_KEY"]),
-                         endpoint: env["PITCH_TEST_ENDPOINT"] ?? "")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ConsensusSection(link: link, myTeamId: env["PITCH_TEST_TEAM"] ?? "",
+                                 transport: RegistryTransport(endpoint: env["PITCH_TEST_ENDPOINT"] ?? "", key: env["PITCH_TEST_KEY"]),
+                                 endpoint: env["PITCH_TEST_ENDPOINT"] ?? "")
+            }
             .padding()
+        }
     }
 }
 

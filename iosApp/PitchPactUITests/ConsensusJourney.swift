@@ -122,12 +122,12 @@ final class ConsensusJourney: XCTestCase {
         XCTAssertEqual(homeApp.textFields["consensus.jersey"].value as? String, "9")
 
         let submit = homeApp.buttons["consensus.submit"]
-        for _ in 0..<4 where !submit.isHittable { homeApp.swipeUp() }
         XCTAssertTrue(submit.isHittable)
         let homeBoard = homeApp.staticTexts["consensus.scoreboard"]
-        tapUntil(submit) { homeBoard.exists && homeBoard.label.contains("PENDING REVIEW: 1") }
-        waitLabelContains(homeBoard, "OFFICIAL 0-0")
-        XCTAssertTrue(homeApp.buttons["consensus.withdraw"].exists)
+        submit.tap()
+        waitExists(homeBoard)
+        waitLabelContains(homeBoard, "OFFICIAL 0-0 · live\nPENDING REVIEW: 1")
+        XCTAssertTrue(homeApp.buttons["consensus.withdraw"].firstMatch.exists)
         homeApp.terminate()
 
         // Step 2: Away scorer launches against same server, views pending review, accepts it.
@@ -149,21 +149,23 @@ final class ConsensusJourney: XCTestCase {
         XCTAssertEqual(awayMatch.value as? String, matchId)
 
         let refresh = awayApp.buttons["Refresh official score"]
-        for _ in 0..<4 where !refresh.isHittable { awayApp.swipeUp() }
         XCTAssertTrue(refresh.isHittable)
-        tapUntil(refresh) { awayApp.buttons["consensus.accept"].exists }
+        refresh.tap()
+        waitExists(awayApp.buttons["consensus.accept"].firstMatch)
         let preReview = awayApp.staticTexts["consensus.scoreboard"]
-        XCTAssertTrue(preReview.exists)
-        waitLabelContains(preReview, "OFFICIAL 0-0")
+        waitExists(preReview)
+        waitLabelContains(preReview, "OFFICIAL 0-0 · live\nPENDING REVIEW: 1")
 
-        let accept = awayApp.buttons["consensus.accept"]
+        let accept = awayApp.buttons["consensus.accept"].firstMatch
         for _ in 0..<4 where !accept.isHittable { awayApp.swipeUp() }
         XCTAssertTrue(accept.isHittable)
+        accept.tap()
         let awayBoard = awayApp.staticTexts["consensus.scoreboard"]
-        tapUntil(accept) { awayBoard.exists && awayBoard.label.contains("OFFICIAL 1-0") }
+        waitExists(awayBoard)
+        waitLabelContains(awayBoard, "OFFICIAL 1-0 · live\nPENDING REVIEW: 0")
 
-        waitLabelContains(awayApp.staticTexts["consensus.ledger"], "ACCEPTED")
-        waitLabelContains(awayApp.staticTexts["consensus.ledger"], "resolved by AWAY")
+        let ledger = awayApp.staticTexts["consensus.ledger"]
+        waitLabelContains(ledger, "ACCEPTED · add goal #9 (HOME) · by HOME · resolved by AWAY")
         awayApp.terminate()
     }
 }
