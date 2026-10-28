@@ -124,8 +124,10 @@ final class ConsensusJourney: XCTestCase {
         let submit = homeApp.buttons["consensus.submit"]
         for _ in 0..<4 where !submit.isHittable { homeApp.swipeUp() }
         XCTAssertTrue(submit.isHittable)
-        tapUntil(submit) { homeApp.staticTexts["consensus.scoreboard"].label.contains("PENDING REVIEW: 1") }
-        waitLabelContains(homeApp.staticTexts["consensus.scoreboard"], "OFFICIAL 0-0")
+        let homeBoard = homeApp.staticTexts["consensus.scoreboard"]
+        tapUntil(submit) { homeBoard.exists && homeBoard.label.contains("PENDING REVIEW: 1") }
+        waitLabelContains(homeBoard, "OFFICIAL 0-0")
+        XCTAssertTrue(homeApp.buttons["consensus.withdraw"].exists)
         homeApp.terminate()
 
         // Step 2: Away scorer launches against same server, views pending review, accepts it.
@@ -150,11 +152,15 @@ final class ConsensusJourney: XCTestCase {
         for _ in 0..<4 where !refresh.isHittable { awayApp.swipeUp() }
         XCTAssertTrue(refresh.isHittable)
         tapUntil(refresh) { awayApp.buttons["consensus.accept"].exists }
+        let preReview = awayApp.staticTexts["consensus.scoreboard"]
+        XCTAssertTrue(preReview.exists)
+        waitLabelContains(preReview, "OFFICIAL 0-0")
 
         let accept = awayApp.buttons["consensus.accept"]
         for _ in 0..<4 where !accept.isHittable { awayApp.swipeUp() }
         XCTAssertTrue(accept.isHittable)
-        tapUntil(accept) { awayApp.staticTexts["consensus.scoreboard"].label.contains("OFFICIAL 1-0") }
+        let awayBoard = awayApp.staticTexts["consensus.scoreboard"]
+        tapUntil(accept) { awayBoard.exists && awayBoard.label.contains("OFFICIAL 1-0") }
 
         waitLabelContains(awayApp.staticTexts["consensus.ledger"], "ACCEPTED")
         waitLabelContains(awayApp.staticTexts["consensus.ledger"], "resolved by AWAY")
