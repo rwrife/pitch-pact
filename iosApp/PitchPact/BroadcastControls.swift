@@ -56,6 +56,7 @@ private enum BroadcastSecrets {
     let away: String
     let endpoint: String
     let capability: String
+    let teamLinkId: String?
     let snapshot: @MainActor @Sendable () throws -> String
     let sample: @MainActor @Sendable () -> (Int64, Int64, String)
     @State private var session: BroadcastSession?
@@ -82,7 +83,7 @@ private enum BroadcastSecrets {
                 Button("Stop broadcast", role: .destructive) { Task { await stop() } }.disabled(busy)
             }
             Text(message).foregroundStyle(.secondary)
-            Text("Only accepted changes are official. Opposing-side review is a later milestone. Keep this screen open to publish; offline retries retain every captured event.").font(.caption)
+            Text("Only accepted linked changes are official. Keep this screen open to publish; offline retries retain every captured event.").font(.caption)
         }
         .onAppear {
             do {
@@ -124,7 +125,7 @@ private enum BroadcastSecrets {
         busy = true
         defer { busy = false }
         do {
-            let body = try rules.create(matchId: matchId, home: home, away: away, id: UUID().uuidString)
+            let body = try rules.create(matchId: matchId, home: home, away: away, id: UUID().uuidString, teamLinkId: teamLinkId)
             let (data, _) = try await request(endpoint, "v0/broadcasts", "POST", capability, body)
             struct Started: Decodable { let spectatorCode: String; let broadcastSessionKey: String }
             let response = try JSONDecoder().decode(Started.self, from: data)

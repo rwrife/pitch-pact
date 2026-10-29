@@ -50,4 +50,23 @@ class RoomScheduleStoreTest {
         assertTrue(schedule.fixtures().isEmpty())
         assertTrue(schedule.availability("f").isEmpty())
     }
+    @Test fun acceptedConsensusResultPersistsAndSurvivesUnchangedScheduleRefresh() {
+        val shared = com.infinityball.pitchpact.dto.CoordinatedFixture(
+            "m1", "LNK", "a", "b", 5_000_000, "Field 2", "Red", "Blue", "coordinated", setOf("a", "b"), 1)
+        schedule.syncCoordinated("a", listOf(shared))
+        val snapshot = com.infinityball.pitchpact.dto.ConsensusSnapshot(
+            "m1", emptyList(), emptyList(), com.infinityball.pitchpact.dto.ScoreboardPayload("m1", 2, 1),
+            emptyList(), setOf(Side.HOME, Side.AWAY), official = true)
+        schedule.applyConsensus("LNK", "a", listOf(snapshot))
+        val scored = schedule.fixtures().single { it.id == "coordinated:m1" }
+        assertEquals(ResultStatus.OFFICIAL, scored.resultStatus)
+        assertEquals(2, scored.officialHome); assertEquals(1, scored.officialAway)
+        // Refresh with unchanged server revision must not wipe the accepted result.
+        schedule.syncCoordinated("a", listOf(shared))
+        assertEquals(scored, schedule.fixtures().single { it.id == "coordinated:m1" })
+        // A pending-only board never overwrites an official result with a lower status silently:
+        // local standings count only OFFICIAL rows.
+        val standing = Scheduling.standings(listOf("a", "b"), schedule.fixtures()).single { it.teamId == "a" }
+        assertEquals(1, standing.played); assertEquals(3, standing.points)
+    }
 }

@@ -34,7 +34,10 @@ import java.util.UUID
         val fixture = schedule.fixtures().firstOrNull { it.id == scoring }
         val homeName = teamStore.teams().firstOrNull { it.id == fixture?.homeTeamId }?.name ?: "Home"
         val awayName = teamStore.teams().firstOrNull { it.id == fixture?.awayTeamId }?.name ?: "Away"
-        MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName) { scoring = null }
+        MatchDayScreen(scoring!!, matchStore, home = homeName, away = awayName,
+            fixtureHomeTeamId = fixture?.homeTeamId, fixtureAwayTeamId = fixture?.awayTeamId,
+            coordinatedLinkId = fixture?.coordinatedLinkId,
+            official = fixture?.officialHome?.let { h -> fixture.officialAway?.let { "$h-$it" } }) { scoring = null }
         return
     }
     var reminder by remember { mutableStateOf(false) }
@@ -74,7 +77,10 @@ import java.util.UUID
             TextButton(onClick = { selectedGame = game.id }) {
                 Text("${game.title} · ${DateFormat.getDateTimeInstance().format(Date(game.startEpochMillis))}" +
                     (if (game.startEpochMillis < System.currentTimeMillis()) " (past)" else "") +
-                    if (game.resultStatus == ResultStatus.PENDING) " · result pending" else "")
+                    (if (game.officialHome != null && game.officialAway != null)
+                        " · official ${game.officialHome}-${game.officialAway}" +
+                            (if (game.resultStatus == ResultStatus.PENDING) " (awaiting opponent confirmation)" else "")
+                    else if (game.resultStatus == ResultStatus.PENDING) " · result pending" else ""))
             }
         }
         if (selectedGame != null) {

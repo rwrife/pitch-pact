@@ -26,7 +26,9 @@ import java.util.UUID
  * rotate, confirm-before-show) lives in `shared` + `server`; this class just moves
  * shared DTOs over HTTPS to the user's self-hosted instance.
  */
-class RegistryClient(private val base: String) {
+class RegistryStatus(val code: Int) : Exception("Registry HTTP $code")
+
+class RegistryClient(val base: String) {
     private val json = PitchPactJson.codec
     private fun checked(): String {
         val b = base.trimEnd('/')
@@ -48,10 +50,19 @@ class RegistryClient(private val base: String) {
                     conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
                 }
                 val code = conn.responseCode
-                if (code !in 200..299) error("Registry HTTP $code")
+                if (code !in 200..299) throw RegistryStatus(code)
                 conn.inputStream.bufferedReader().use { it.readText() }
             } finally { conn.disconnect() }
         }
+    /** Raw JSON transport for the consensus panel; DTO parsing and wording stay in shared ConsensusFacade. */
+    suspend fun raw(method: String, path: String, key: String, body: String?): String =
+        withContext(Dispatchers.IO) { call(method, path, key, body) }
+    /** HTTP status only for outbox policy; a failed connection or unavailable transport is zero. */
+    suspend fun statusOf(method: String, path: String, key: String, body: String?): Int = withContext(Dispatchers.IO) {
+        try { call(method, path, key, body); 200 }
+        catch (e: RegistryStatus) { e.code }
+        catch (e: Exception) { 0 }
+    }
     private suspend fun <T> one(method: String, path: String, key: String?, body: String?, s: KSerializer<T>): T =
         withContext(Dispatchers.IO) { json.decodeFromString(s, call(method, path, key, body)) }
     private suspend fun many(path: String, key: String?, s: KSerializer<*>): List<*> =
@@ -78,6 +89,12 @@ class RegistryClient(private val base: String) {
         many("/v0/registry/teams/$teamId/schedule", key, CoordinatedFixture.serializer()) as List<CoordinatedFixture>
     suspend fun fixtures(linkId: String, key: String): List<CoordinatedFixture> =
         many("/v0/links/$linkId/fixtures", key, CoordinatedFixture.serializer()) as List<CoordinatedFixture>
+    suspend fun consensus(linkId: String, matchId: String, key: String): ConsensusSnapshot =
+        one("GET", "/v0/links/$linkId/consensus?matchId=$matchId", key, null, ConsensusSnapshot.serializer())
+    suspend fun consensusOrNull(linkId: String, matchId: String, key: String): ConsensusSnapshot? =
+        try { consensus(linkId, matchId, key) } catch (e: RegistryStatus) {
+            if (e.code == 404) null else throw e
+        }
     suspend fun requestLink(teamCode: String, requesterTeamId: String, key: String) =
         one("POST", "/v0/registry/teams/${teamCode.trim()}/link-requests", key,
             enc(LinkRequestInput(requesterTeamId, UUID.randomUUID().toString())), LinkRequestView.serializer())
@@ -165,11 +182,20 @@ fun RegistryScreen(store: RoomTeamStore, schedule: com.infinityball.pitchpact.da
             Button(onClick = { run {
                 inbox = client.inbox(c.team.id, c.ownerKey)
                 links = client.links(c.team.id, c.ownerKey)
+                links.filter { it.state == "active" }.forEach { link ->
+                    prefs.edit().putString("link:${link.id}", PitchPactJson.codec.encodeToString(LinkView.serializer(), link)).commit()
+                }
                 sharedSchedule = client.schedule(c.team.id, c.ownerKey)
             } }) { Text("Refresh links & coordinated schedule") }
             Button(onClick = { run {
                 sharedSchedule = client.schedule(c.team.id, c.ownerKey)
                 schedule.syncCoordinated(c.team.id, sharedSchedule)
+                // Accepted-only official results flow into the local schedule/standings.
+                client.links(c.team.id, c.ownerKey).filter { it.state == "active" }.forEach { link ->
+                    val snapshots = sharedSchedule.filter { it.linkId == link.id }
+                        .mapNotNull { client.consensusOrNull(link.id, it.id, c.ownerKey) }
+                    schedule.applyConsensus(link.id, link.firstTeamId, snapshots)
+                }
             } }) { Text("Sync coordinated fixtures into my schedule") }
             inbox.filter { it.state == "pending" }.forEach { request ->
                 Card { Column(Modifier.padding(8.dp)) {
@@ -194,6 +220,10 @@ fun RegistryScreen(store: RoomTeamStore, schedule: com.infinityball.pitchpact.da
                             sharedSchedule = client.schedule(c.team.id, c.ownerKey)
                         } }) { Text("Confirm fixture") }
                     }
+                    ConsensusPanel(client, link, c.team.id, c.ownerKey, onSnapshot = { raw ->
+                        schedule.applyConsensus(link.id, link.firstTeamId,
+                            listOf(json.decodeFromString(ConsensusSnapshot.serializer(), raw)))
+                    })
                     OutlinedTextField(kickoff, { kickoff = it }, label = { Text("Kickoff epoch millis") })
                     OutlinedTextField(location, { location = it }, label = { Text("Location") })
                     OutlinedTextField(homeUniform, { homeUniform = it }, label = { Text("Home uniform") })
