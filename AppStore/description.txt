@@ -4,7 +4,7 @@ Pitch Pact helps youth and recreational soccer teams plan games, manage rosters 
 
 Create a team and roster, schedule tournament or one-off games, record location and uniform requirements, check RSVP availability locally, and set game reminders on your device.
 
-On game day, use the live clock and log goals, cards, substitutions, and extra events. Capture continues offline; the local ledger retains corrections and submitted entries. The official score is separate from the pending score: a goal does not become official without an opposing-side acceptance. Cross-team consensus review is planned but not yet available.
+On game day, use the live clock and log goals, cards, substitutions, and extra events. Capture continues offline; the local ledger retains corrections and submitted entries. For linked teams on a server you run, each side can submit a goal for opposing review. The official score stays separate from pending changes: a submitted goal becomes official only after the other sideline accepts it. Rejected and withdrawn changes remain in the audit ledger.
 
 Managers running their own server can start a private broadcast and share a six-character code. Spectators can read the score, clock snapshot, labeled pending changes, and play-by-play through an app screen or browser page without creating an account. Broadcast updates require connectivity and a configured server; the public hosted service has not been deployed.
 

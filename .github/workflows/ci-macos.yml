@@ -197,7 +197,9 @@ jobs:
           [ "$FAM" = "1" ] || { echo "UIDeviceFamily=$FAM (must be [1])"; exit 1; }
           BID=$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")
           [ "$BID" = "$BUNDLE_ID" ] || { echo "CFBundleIdentifier=$BID"; exit 1; }
-          echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID"
+          test -s iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/PitchPact.app/Assets.car || { echo "missing compiled icon asset catalog"; exit 1; }
+          test -n "$(compgen -G 'iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/PitchPact.app/AppIcon*.png')" || { echo "missing compiled AppIcon raster"; exit 1; }
+          echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID icon compiled"
 
       - name: Upload test results + build log
         if: always()
