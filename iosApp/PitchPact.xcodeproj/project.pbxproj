@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		M80000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = M80000000000000000000002 /* Assets.xcassets */; };
 		AA00000000000000000000B1 /* PitchPactApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* PitchPactApp.swift */; };
 		AA00000000000000000000B6 /* TeamsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A7 /* TeamsView.swift */; };
 		AA00000000000000000000B7 /* TeamDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A8 /* TeamDetailView.swift */; };
@@ -36,6 +37,7 @@ UI0000000000000000000001 = {isa = PBXBuildFile; fileRef = UI00000000000000000000
 
 /* Begin PBXFileReference section */
 		AA00000000000000000000A1 /* PitchPact.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PitchPact.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		M80000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA00000000000000000000A2 /* PitchPactApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchPactApp.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A7 /* TeamsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsView.swift; sourceTree = "<group>"; };
 		AA00000000000000000000A8 /* TeamDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDetailView.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@ UI0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.c
 		AA00000000000000000000C3 /* PitchPact */ = {
 			isa = PBXGroup;
 			children = (
+				M80000000000000000000002 /* Assets.xcassets */,
 				AA00000000000000000000A2 /* PitchPactApp.swift */,
 				AA00000000000000000000A7 /* TeamsView.swift */,
 				AA00000000000000000000A8 /* TeamDetailView.swift */,
@@ -218,6 +221,7 @@ productType = "com.apple.product-type.bundle.ui-testing";
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M80000000000000000000001 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,6 +338,7 @@ UI0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 214748
 		AA00000000000000000000F5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
@@ -364,6 +369,7 @@ UI0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 214748
 		AA00000000000000000000F6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;

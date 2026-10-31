@@ -127,6 +127,7 @@ jobs:
           restore-keys: gradle-macos-
 
       - name: Start loopback consensus server for networked XCUITest
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           # Ephemeral local server on loopback port 8089 gives the native iOS
@@ -140,15 +141,19 @@ jobs:
           ./gradlew :server:run --no-daemon > "$RUNNER_TEMP/server.log" 2>&1 &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
-          # Wait for server readiness
-          for i in $(seq 1 120); do
+          # Cold macOS Gradle dependency resolution can exceed two minutes.
+          for i in $(seq 1 600); do
             if curl -fsS --max-time 2 http://127.0.0.1:8089/healthz 2>/dev/null | grep -q '"status":"ok"'; then
               echo "Server ready on port 8089 after $i checks"
               break
             fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "::error::Gradle server process exited before readiness"
+              break
+            fi
             sleep 1
           done
-          curl -s http://127.0.0.1:8089/healthz | grep -q '"status":"ok"' || {
+          curl -fsS --max-time 2 http://127.0.0.1:8089/healthz | grep -q '"status":"ok"' || {
             echo "::error::Server failed to start on port 8089; log:"
             cat "$RUNNER_TEMP/server.log"
             exit 1
@@ -197,7 +202,9 @@ jobs:
           [ "$FAM" = "1" ] || { echo "UIDeviceFamily=$FAM (must be [1])"; exit 1; }
           BID=$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")
           [ "$BID" = "$BUNDLE_ID" ] || { echo "CFBundleIdentifier=$BID"; exit 1; }
-          echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID"
+          test -s iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/PitchPact.app/Assets.car || { echo "missing compiled icon asset catalog"; exit 1; }
+          test -n "$(compgen -G 'iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator/PitchPact.app/AppIcon*.png')" || { echo "missing compiled AppIcon raster"; exit 1; }
+          echo "post-build assertions OK: UIDeviceFamily=[1] bundle=$BID icon compiled"
 
       - name: Upload test results + build log
         if: always()
