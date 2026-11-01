@@ -1,10 +1,10 @@
 # Android Google Play Release Setup
 
-Pitch Pact ships to Google Play as a signed Android App Bundle (AAB) via GitHub Actions (`.github/workflows/android-release.yml`).
+Pitch Pact targets Google Play internal testing with a signed Android App Bundle (AAB) via GitHub Actions (`.github/workflows/android-release.yml`). No Play upload has succeeded yet.
 
-## Required GitHub Actions Secrets
+## Required GitHub Actions secrets
 
-To enable automated release to Google Play Internal App Sharing / Internal Track, configure the following secrets in repository settings (`Settings -> Secrets and variables -> Actions`):
+To enable automated release to Google Play internal track, configure these secrets in repository settings (`Settings -> Secrets and variables -> Actions`):
 
 | Secret Name | Description | Example / Notes |
 |---|---|---|
