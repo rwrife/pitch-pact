@@ -80,8 +80,13 @@ jobs:
           key: gradle-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.arch }}-
 
-      - name: Build + test (shared, server, android incl. Room/Robolectric and release bundle)
-        run: ./gradlew --no-daemon :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug :androidApp:bundleRelease :server:test
+      - name: Build + test (shared, server, android incl. Room/Robolectric)
+        run: ./gradlew --no-daemon :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug :server:test
+
+      # Room KSP writes a single schema directory for debug/release. Running
+      # both variants in one parallel Gradle graph races and reads empty JSON.
+      - name: Gate Android release bundle
+        run: ./gradlew --no-daemon :androidApp:bundleRelease && test -s androidApp/build/outputs/bundle/release/androidApp-release.aab
 
       - name: Upload test results
         if: always()
