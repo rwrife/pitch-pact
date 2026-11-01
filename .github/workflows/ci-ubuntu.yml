@@ -80,8 +80,8 @@ jobs:
           key: gradle-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.arch }}-
 
-      - name: Build + test (shared, server, android incl. Room/Robolectric)
-        run: ./gradlew --no-daemon :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug :server:test
+      - name: Build + test (shared, server, android incl. Room/Robolectric and release bundle)
+        run: ./gradlew --no-daemon :shared:test :androidApp:testDebugUnitTest :androidApp:assembleDebug :androidApp:bundleRelease :server:test
 
       - name: Upload test results
         if: always()
