@@ -50,7 +50,7 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
         require(fixtures().firstOrNull { it.id == id }?.coordinatedLinkId == null) {
             "Coordinated fixture — revoke or un-confirm it with the other team instead of deleting locally"
         }
-        db.withTransaction { dao.deleteAvailability(id); dao.deleteFixture(id) }
+        db.withTransaction { dao.deleteAvailability(id); db.matchDayDao().delete(id); dao.deleteFixture(id) }
     }
     override fun saveAvailability(response: AvailabilityResponse) {
         require(db.teamDao().player(response.playerId) != null) { "Player not on roster" }

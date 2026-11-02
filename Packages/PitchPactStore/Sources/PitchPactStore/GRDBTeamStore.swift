@@ -282,6 +282,7 @@ extension GRDBTeamStore {
         try writer.write { db in
             for fixtureId in dependentFixtures {
                 try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [fixtureId])
+                try db.execute(sql: "DELETE FROM match_day WHERE id = ?", arguments: [fixtureId])
                 try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [fixtureId])
             }
             _ = try TeamRow.deleteOne(db, key: id)

@@ -27,6 +27,26 @@ struct GRDBScheduleStoreTests {
         #expect(try store.availability(fixtureId: "f").isEmpty)
     }
 
+    @Test("fixture and team deletion remove match ledger, while archive preserves it")
+    func ledgerDeletionScope() throws {
+        let store = try GRDBTeamStore(inMemory: true)
+        try store.saveTeam(Team(id: "a", name: "Falcons", createdAtEpochMillis: 1))
+        try store.saveTeam(Team(id: "b", name: "Comets", createdAtEpochMillis: 1))
+        for id in ["f1", "f2"] {
+            try store.saveFixture(Fixture(id: id, title: id, homeTeamId: "a", awayTeamId: "b", startEpochMillis: 1))
+            try store.saveMatchDay(id: id, sharedJSON: "{\"matchId\":\"\(id)\",\"events\":[]}")
+        }
+        try store.archiveTeam(id: "a", archived: true, atEpochMillis: 10)
+        #expect(try store.matchDay(id: "f1") != nil)
+        try store.deleteFixture(id: "f1")
+        #expect(try store.matchDay(id: "f1") == nil)
+        #expect(try store.matchDay(id: "f2") != nil)
+        #expect(try store.deletionPreview(id: "a").fixtureCount == 1)
+        try store.deleteTeam(id: "a", requireEmpty: false)
+        #expect(try store.matchDay(id: "f2") == nil)
+        #expect(try store.fixtures().isEmpty)
+    }
+
     @Test func standingsPendingFixturesRoundTrip() throws {
         let standing = Standing(teamId: "a", played: 1, points: 3, goalsFor: 2, goalsAgainst: 1, pendingFixtures: 2)
         let data = try JSONEncoder().encode(standing)
