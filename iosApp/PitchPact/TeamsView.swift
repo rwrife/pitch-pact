@@ -127,8 +127,8 @@ struct TeamsView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: { preview in
             Text(preview.blockingCount == 0
-                 ? "This team has no players, uniforms, or guardian contacts. Deleting removes it permanently."
-                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures. This cannot be undone.")
+                 ? "This team has no players, uniforms, guardian contacts, or fixtures. Deleting removes it permanently."
+                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures and their match ledgers. This cannot be undone.")
         }
     }
 
