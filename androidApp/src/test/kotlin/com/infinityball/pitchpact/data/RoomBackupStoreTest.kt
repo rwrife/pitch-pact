@@ -27,7 +27,7 @@ class RoomBackupStoreTest {
         teams.saveTeam(Team("rivals", "Rivals", 100))
         teams.savePlayer(Player("p1", "t1", "Jo", 7, 100))
         teams.saveGuardianContact(GuardianContact("g1", "p1", "Pat", "555", "pat@example.com", "Note"))
-        teams.saveUniformRequirement(UniformRequirement("u1", "t1", "Rivals", Kit(KitColor.RED), Kit(KitColor.NAVY)))
+        teams.saveUniformRequirement(UniformRequirement("u1", "t1", "Rivals", Kit(KitColor.RED), Kit(KitColor.BLUE)))
         schedule.saveLocation(Location("loc1", "West Pitch"))
         schedule.saveTournament(Tournament("tourn1", "Summer Cup", listOf("t1", "rivals"), TournamentFormat.SINGLE_ELIMINATION))
         schedule.saveFixture(Fixture("f1", "Final", "t1", "rivals", 500, 90, "loc1", "tourn1"))
