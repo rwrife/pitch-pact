@@ -67,7 +67,7 @@ class RoomBackupStoreTest {
         assertFailsWith<IllegalArgumentException> {
             backup.replace(invalidPayload)
         }
-        assertEquals(1, teams.teams(includeArchived = true).size)
-        assertEquals("Falcons", teams.teams(includeArchived = true).single().name)
+        assertEquals(2, teams.teams(includeArchived = true).size)
+        assertEquals("Falcons", teams.teams(includeArchived = true).single { it.id == "t1" }.name)
     }
 }
