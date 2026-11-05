@@ -11,9 +11,12 @@ import androidx.compose.runtime.setValue
 import com.infinityball.pitchpact.data.PitchPactDatabase
 import com.infinityball.pitchpact.data.RoomTeamStore
 import com.infinityball.pitchpact.data.RoomScheduleStore
+import com.infinityball.pitchpact.data.RoomBackupStore
+import com.infinityball.pitchpact.ui.BackupControls
 import com.infinityball.pitchpact.ui.ScheduleScreen
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import com.infinityball.pitchpact.ui.TeamDirectoryScreen
@@ -33,10 +36,11 @@ class MainActivity : ComponentActivity() {
         val db = PitchPactDatabase.build(applicationContext)
         val store = RoomTeamStore(db)
         val schedule = RoomScheduleStore(db)
+        val backup = RoomBackupStore(db)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Navigation(store, schedule)
+                    Navigation(store, schedule, backup)
                 }
             }
         }
@@ -44,7 +48,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
+private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore, backup: RoomBackupStore) {
+    var restored by remember { mutableStateOf(0) }
     var showSchedule by remember { mutableStateOf(false) }
     var showSpectator by remember { mutableStateOf(false) }
     var showRegistry by remember { mutableStateOf(false) }
@@ -69,11 +74,16 @@ private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore) {
                 TextButton(onClick = { showRegistry = true }) { Text("Find & link teams") }
                 TextButton(onClick = { showSpectator = true }) { Text("Watch live game") }
             }
-            TeamDirectoryScreen(
-                store = store,
-                schedule = schedule,
-                onOpenTeam = { selectedTeamId = it },
-            )
+            BackupControls(backup, onRestored = { restored++ })
+            Box(Modifier.weight(1f)) {
+                androidx.compose.runtime.key(restored) {
+                    TeamDirectoryScreen(
+                        store = store,
+                        schedule = schedule,
+                        onOpenTeam = { selectedTeamId = it },
+                    )
+                }
+            }
         }
     } else {
         TeamDetailScreen(
