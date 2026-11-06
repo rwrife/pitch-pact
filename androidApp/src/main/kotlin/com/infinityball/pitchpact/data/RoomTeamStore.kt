@@ -67,7 +67,7 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
                 )
             }
             RoomScheduleStore(db).fixtures().filter { it.homeTeamId == id || it.awayTeamId == id }
-                .forEach { db.scheduleDao().deleteAvailability(it.id); db.scheduleDao().deleteFixture(it.id) }
+                .forEach { db.scheduleDao().deleteAvailability(it.id); db.matchDayDao().delete(it.id); db.scheduleDao().deleteFixture(it.id) }
             dao.players(id).forEach { db.scheduleDao().deletePlayerAvailability(it.id) }
             dao.deleteGuardiansForAllPlayers(id)
             dao.players(id).forEach { dao.deletePlayer(it.id) }

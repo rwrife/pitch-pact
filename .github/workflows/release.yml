@@ -1,0 +1,157 @@
+name: Release (TestFlight)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (for example 0.1.0)'
+        required: true
+        type: string
+      upload:
+        description: 'Upload to TestFlight'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+concurrency:
+  group: pitchpact-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve release version and pinned toolchain
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            VERSION='${{ inputs.version }}'
+            [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version'; exit 1; }
+            TAG="v$VERSION"
+          else
+            TAG="$GITHUB_REF_NAME"
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release tag'; exit 1; }
+            VERSION="${TAG#v}"
+          fi
+          { echo "RELEASE_VERSION=$VERSION"; echo "RELEASE_TAG=$TAG"; } >> "$GITHUB_ENV"
+          pick=''
+          for app in /Applications/Xcode*.app/Contents/Developer; do
+            out=$(DEVELOPER_DIR="$app" xcodebuild -version)
+            if [ "$out" = $'Xcode 26.0.1\nBuild version 17A400' ]; then pick="$app"; fi
+          done
+          [ -n "$pick" ] || { echo '::error::Exact Xcode 26.0.1 (17A400) unavailable'; exit 1; }
+          [ "$(DEVELOPER_DIR="$pick" xcrun --sdk iphoneos --show-sdk-version)" = '26.0' ] || { echo '::error::Pinned iPhoneOS SDK 26.0 unavailable'; exit 1; }
+          echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
+          echo "Pinned Xcode: $pick, version 26.0.1 (17A400), iPhoneOS SDK 26.0"
+      - name: Resolve JDK and iOS platform
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          if [ -n "${JAVA_HOME_21_ARM64:-}" ]; then echo "JAVA_HOME=$JAVA_HOME_21_ARM64" >> "$GITHUB_ENV"; fi
+          if xcodebuild -showdestinations -project iosApp/PitchPact.xcodeproj -scheme PitchPact 2>&1 | grep -F 'Any iOS Device, error:'; then
+            xcodebuild -downloadPlatform iOS -architectureVariant universal
+          fi
+          xcodebuild -showdestinations -project iosApp/PitchPact.xcodeproj -scheme PitchPact 2>&1 | grep -F 'Any iOS Device' | grep -v 'error:'
+      - name: Install ASC key privately
+        run: |
+          set -euo pipefail
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 ASC_TEAM_ID; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing $name secret"; exit 1; }
+          done
+          umask 077
+          printf '%s' "$ASC_KEY_P8" | perl -pe 's/\\n/\n/g' > "$RUNNER_TEMP/asc-api-key.p8"
+          chmod 600 "$RUNNER_TEMP/asc-api-key.p8"
+          test -s "$RUNNER_TEMP/asc-api-key.p8"
+      - name: Archive signed iPhone app
+        timeout-minutes: 40
+        run: |
+          set -euo pipefail
+          xcodebuild archive -project iosApp/PitchPact.xcodeproj -scheme PitchPact \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PitchPact.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc-api-key.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$ASC_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$RELEASE_VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+          APP="$RUNNER_TEMP/PitchPact.xcarchive/Products/Applications/PitchPact.app"
+          [ "$(plutil -extract CFBundleIdentifier raw "$APP/Info.plist")" = com.infinityball.pitchpact ]
+          [ "$(plutil -extract UIDeviceFamily xml1 -o - "$APP/Info.plist" | grep -o '<integer>[0-9]*</integer>' | tr -cd 0-9)" = 1 ]
+          test -s "$APP/Assets.car"
+          test -n "$(compgen -G "$APP/AppIcon*.png")"
+          codesign --verify --deep --strict "$APP"
+      - name: Export and optionally upload IPA
+        timeout-minutes: 20
+        env:
+          UPLOAD: ${{ inputs.upload != false }}
+        run: |
+          set -euo pipefail
+          if [ "$UPLOAD" = true ]; then
+            DESTINATION='<key>destination</key><string>upload</string><key>uploadMethod</key><string>app-store-connect</string>'
+          else
+            DESTINATION='<key>destination</key><string>export</string>'
+          fi
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<plist version="1.0"><dict>' \
+            '<key>method</key><string>app-store-connect</string>' \
+            '<key>signingStyle</key><string>automatic</string>' \
+            '<key>manageAppVersionAndBuildNumber</key><false/>' \
+            '<key>teamID</key><string>'"$ASC_TEAM_ID"'</string>' \
+            "$DESTINATION" '</dict></plist>' > "$RUNNER_TEMP/ExportOptions.plist"
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/PitchPact.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ipa" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/asc-api-key.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Poll processed TestFlight build
+        if: ${{ inputs.upload != false }}
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install --quiet 'pyjwt[crypto]'
+          ASC_KEY_FILE="$RUNNER_TEMP/asc-api-key.p8" "$RUNNER_TEMP/asc-venv/bin/python3" .github/scripts/poll_testflight.py "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/processed-build.txt"
+          test -s "$RUNNER_TEMP/processed-build.txt"
+      - name: Retain processed build evidence
+        if: ${{ inputs.upload != false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: processed-testflight-build
+          path: ${{ runner.temp }}/processed-build.txt
+          if-no-files-found: error
+      - name: Remove API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc-api-key.p8"
+
+  github-release:
+    needs: testflight
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: processed-testflight-build
+          path: evidence
+      - name: Publish release after real ASC build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s evidence/processed-build.txt
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes --title "Pitch Pact $GITHUB_REF_NAME"
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json url --jq .url

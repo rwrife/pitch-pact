@@ -50,6 +50,21 @@ class RoomScheduleStoreTest {
         assertTrue(schedule.fixtures().isEmpty())
         assertTrue(schedule.availability("f").isEmpty())
     }
+    @Test fun archivePreservesLedgersButFixtureAndTeamDeleteRemoveThem() {
+        for (id in listOf("f1", "f2")) {
+            schedule.saveFixture(Fixture(id, id, "a", "b", 1_000_000, 90))
+            RoomMatchDayStore(db).save(MatchDayState(id))
+        }
+        teams.archiveTeam("a", true, 10)
+        assertNotNull(db.matchDayDao().load("f1"))
+        schedule.deleteFixture("f1")
+        assertNull(db.matchDayDao().load("f1"))
+        assertNotNull(db.matchDayDao().load("f2"))
+        assertEquals(1, teams.deletionPreview("a").fixtureCount)
+        teams.deleteTeam("a", requireEmpty = false)
+        assertNull(db.matchDayDao().load("f2"))
+        assertTrue(schedule.fixtures().isEmpty())
+    }
     @Test fun acceptedConsensusResultPersistsAndSurvivesUnchangedScheduleRefresh() {
         val shared = com.infinityball.pitchpact.dto.CoordinatedFixture(
             "m1", "LNK", "a", "b", 5_000_000, "Field 2", "Red", "Blue", "coordinated", setOf("a", "b"), 1)

@@ -31,4 +31,9 @@ data class AvailabilityRow(@ColumnInfo(name = "fixture_id") val fixtureId: Strin
     @Query("SELECT * FROM availability WHERE fixture_id = :fixtureId ORDER BY player_id") fun availability(fixtureId: String): List<AvailabilityRow>
     @Query("DELETE FROM availability WHERE fixture_id = :fixtureId") fun deleteAvailability(fixtureId: String)
     @Query("DELETE FROM availability WHERE player_id = :playerId") fun deletePlayerAvailability(playerId: String)
+    @Query("SELECT * FROM availability ORDER BY fixture_id, player_id") fun allAvailability(): List<AvailabilityRow>
+    @Query("DELETE FROM availability") fun clearAvailability()
+    @Query("DELETE FROM fixture") fun clearFixtures()
+    @Query("DELETE FROM tournament") fun clearTournaments()
+    @Query("DELETE FROM location") fun clearLocations()
 }

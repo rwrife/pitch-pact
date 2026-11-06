@@ -19,7 +19,8 @@ android {
         applicationId = "com.infinityball.pitchpact"
         minSdk = 27
         targetSdk = 36
-        versionCode = 1
+        // Play requires monotonic version codes across uploads; CI supplies its run number.
+        versionCode = (findProperty("pitchPactVersionCode") as String?)?.toInt() ?: 1
         versionName = "0.1.0"
     }
 
@@ -38,9 +39,22 @@ android {
         }
     }
 
+    // Signing is configured only for the release job, never from committed credentials.
+    val playKeystore = System.getenv("PITCHPACT_KEYSTORE_PATH")
+    if (playKeystore != null) {
+        signingConfigs {
+            create("play") {
+                storeFile = file(playKeystore)
+                storePassword = requireNotNull(System.getenv("PITCHPACT_KEYSTORE_PASSWORD"))
+                keyAlias = requireNotNull(System.getenv("PITCHPACT_KEY_ALIAS"))
+                keyPassword = requireNotNull(System.getenv("PITCHPACT_KEY_PASSWORD"))
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (playKeystore != null) signingConfig = signingConfigs.getByName("play")
         }
     }
 

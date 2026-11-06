@@ -26,6 +26,14 @@ interface TeamDao {
     @Query("SELECT * FROM team WHERE (:includeArchived = 1 OR archived_at IS NULL) ORDER BY created_at DESC")
     fun teams(includeArchived: Boolean): List<TeamRow>
 
+    @Query("SELECT * FROM player ORDER BY id") fun allPlayers(): List<PlayerRow>
+    @Query("SELECT * FROM guardian_contact ORDER BY id") fun allGuardians(): List<GuardianRow>
+    @Query("SELECT * FROM uniform_requirement ORDER BY id") fun allUniforms(): List<UniformRow>
+    @Query("DELETE FROM guardian_contact") fun clearGuardians()
+    @Query("DELETE FROM uniform_requirement") fun clearUniforms()
+    @Query("DELETE FROM player") fun clearPlayers()
+    @Query("DELETE FROM team") fun clearTeams()
+
     @Query("UPDATE team SET archived_at = :at WHERE id = :id")
     fun setArchived(id: String, at: Long?)
 

@@ -8,6 +8,27 @@
 import SwiftUI
 import UserNotifications
 import PitchPactStore
+import UniformTypeIdentifiers
+@preconcurrency import PitchPactShared
+
+private typealias Team = PitchPactStore.Team
+private typealias TeamDeletionPreview = PitchPactStore.TeamDeletionPreview
+private typealias ValidationFailure = PitchPactStore.ValidationFailure
+
+private struct BackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var text: String
+    init(text: String) { self.text = text }
+    init(configuration: ReadConfiguration) throws {
+        guard let text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.text = text
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
 
 struct TeamsView: View {
     @State private var teams: [Team] = []
@@ -17,9 +38,41 @@ struct TeamsView: View {
     @State private var createError: String?
     @State private var deleteTarget: Team?
     @State private var deletePreview: TeamDeletionPreview?
+    @State private var backupDocument: BackupDocument?
+    @State private var exportingBackup = false
+    @State private var importingBackup = false
+    @State private var incomingBackup: String?
+    @State private var incomingCounts: String?
+    @State private var dataError: String?
+    @State private var csv: String?
 
     var body: some View {
         List {
+            Section("Private data") {
+                Button("Save backup JSON") {
+                    do {
+                        let raw = try AppTeamStore.shared.backupJSON()
+                        try validateBackup(raw)
+                        backupDocument = BackupDocument(text: raw)
+                        exportingBackup = true
+                    } catch { dataError = error.localizedDescription }
+                }
+                Button("Restore backup JSON") { importingBackup = true }
+                ForEach(["schedule", "results", "availability"], id: \.self) { kind in
+                    Button("Share \(kind) CSV") {
+                        do {
+                            let raw = try AppTeamStore.shared.backupJSON()
+                            try validateBackup(raw)
+                            let result = BackupFacade().export(json: raw, kind: kind)
+                            guard !result.hasPrefix("ERROR:") else {
+                                throw ValidationFailure("backup.csv", result)
+                            }
+                            csv = result
+                        } catch { dataError = error.localizedDescription }
+                    }
+                }
+                if let csv { ShareLink("Share CSV", item: csv) }
+            }
             NavigationLink("Games & tournaments") { ScheduleView() }
             NavigationLink("Find & link teams") { RegistryView() }.accessibilityIdentifier("app.teams.registry")
             NavigationLink("Watch live game") { SpectatorView() }.accessibilityIdentifier("app.teams.watchLive")
@@ -127,8 +180,57 @@ struct TeamsView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: { preview in
             Text(preview.blockingCount == 0
-                 ? "This team has no players, uniforms, or guardian contacts. Deleting removes it permanently."
-                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures. This cannot be undone.")
+                 ? "This team has no players, uniforms, guardian contacts, or fixtures. Deleting removes it permanently."
+                 : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures and their match ledgers. This cannot be undone.")
+        }
+        .fileExporter(isPresented: $exportingBackup, document: backupDocument, contentType: .json, defaultFilename: "pitch-pact-backup.json") { _ in
+            backupDocument = nil
+        }
+        .fileImporter(isPresented: $importingBackup, allowedContentTypes: [.json]) { result in
+            do {
+                let url = try result.get()
+                guard url.startAccessingSecurityScopedResource() else {
+                    throw CocoaError(.fileReadNoPermission)
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+                let text = try String(contentsOf: url, encoding: .utf8)
+                try validateBackup(text)
+                incomingBackup = text
+                incomingCounts = BackupFacade().preview(json: text)
+            } catch { dataError = error.localizedDescription }
+        }
+        .confirmationDialog(
+            "Replace local data?",
+            isPresented: Binding(
+                get: { incomingBackup != nil },
+                set: { if !$0 { incomingBackup = nil; incomingCounts = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Replace", role: .destructive) {
+                guard let incoming = incomingBackup else { return }
+                do {
+                    try AppTeamStore.shared.replaceBackup(incoming, validate: validateBackup)
+                    reload()
+                } catch { dataError = error.localizedDescription }
+                incomingBackup = nil; incomingCounts = nil
+            }
+            Button("Cancel", role: .cancel) { incomingBackup = nil; incomingCounts = nil }
+        } message: {
+            Text("Preview: \(incomingCounts ?? "counts unavailable"). Incoming records will overwrite local data completely. Cancel changes nothing.")
+        }
+        .alert("Data operation failed", isPresented: Binding(
+            get: { dataError != nil },
+            set: { if !$0 { dataError = nil } }
+        )) {
+            Button("OK", role: .cancel) { dataError = nil }
+        } message: { Text(dataError ?? "") }
+    }
+
+    private func validateBackup(_ json: String) throws {
+        let result = BackupFacade().preview(json: json)
+        guard result.hasPrefix("OK:") else {
+            throw ValidationFailure("backup.preview.failed", result)
         }
     }
 

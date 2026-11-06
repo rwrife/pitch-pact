@@ -1,0 +1,58 @@
+name: Release (Play internal)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  play-internal:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: ghcr.io/cirruslabs/android-sdk:36
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify credentials and provision private signing file
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing $name secret; see docs/play-release-setup.md"; exit 1; }
+          done
+          python3 -c 'import json,os; assert json.loads(os.environ["PLAY_SERVICE_ACCOUNT_JSON"])["type"] == "service_account"'
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pitchpact-upload.jks"
+          test -s "$RUNNER_TEMP/pitchpact-upload.jks"
+          echo "PITCHPACT_KEYSTORE_PATH=$RUNNER_TEMP/pitchpact-upload.jks" >> "$GITHUB_ENV"
+      - name: Build signed release bundle
+        env:
+          PITCHPACT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PITCHPACT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PITCHPACT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :androidApp:bundleRelease "-PpitchPactVersionCode=$GITHUB_RUN_NUMBER"
+          test -s androidApp/build/outputs/bundle/release/androidApp-release.aab
+          jarsigner -verify -strict -certs androidApp/build/outputs/bundle/release/androidApp-release.aab
+      - name: Upload signed AAB to Play internal track
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.infinityball.pitchpact
+          releaseFiles: androidApp/build/outputs/bundle/release/androidApp-release.aab
+          track: internal
+          status: completed
+      - name: Remove private signing file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pitchpact-upload.jks"

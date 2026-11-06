@@ -56,6 +56,7 @@ extension GRDBTeamStore {
         }
         try writer.write { db in
             try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM match_day WHERE id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [id])
         }
     }
