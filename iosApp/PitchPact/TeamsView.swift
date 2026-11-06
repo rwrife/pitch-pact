@@ -11,6 +11,10 @@ import PitchPactStore
 import UniformTypeIdentifiers
 @preconcurrency import PitchPactShared
 
+private typealias Team = PitchPactStore.Team
+private typealias TeamDeletionPreview = PitchPactStore.TeamDeletionPreview
+private typealias ValidationFailure = PitchPactStore.ValidationFailure
+
 private struct BackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
     var text: String
