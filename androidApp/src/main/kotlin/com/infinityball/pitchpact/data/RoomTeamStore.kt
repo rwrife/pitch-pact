@@ -66,8 +66,13 @@ class RoomTeamStore(private val db: PitchPactDatabase) : TeamStore {
                     "Team still holds ${preview.playerCount} players, ${preview.uniformRequirementCount} uniforms, ${preview.guardianContactCount} guardian contacts",
                 )
             }
-            RoomScheduleStore(db).fixtures().filter { it.homeTeamId == id || it.awayTeamId == id }
+            val schedule = RoomScheduleStore(db)
+            schedule.fixtures().filter { it.homeTeamId == id || it.awayTeamId == id }
                 .forEach { db.scheduleDao().deleteAvailability(it.id); db.matchDayDao().delete(it.id); db.scheduleDao().deleteFixture(it.id) }
+            schedule.tournaments().filter { id in it.teamIds }.forEach { tournament ->
+                val updated = tournament.copy(teamIds = tournament.teamIds - id)
+                db.scheduleDao().saveTournament(TournamentRow(updated.id, json.encodeToString(com.infinityball.pitchpact.domain.Tournament.serializer(), updated)))
+            }
             dao.players(id).forEach { db.scheduleDao().deletePlayerAvailability(it.id) }
             dao.deleteGuardiansForAllPlayers(id)
             dao.players(id).forEach { dao.deletePlayer(it.id) }

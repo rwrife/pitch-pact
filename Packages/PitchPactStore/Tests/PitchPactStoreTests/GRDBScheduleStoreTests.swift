@@ -25,6 +25,11 @@ struct GRDBScheduleStoreTests {
         try store.deleteTeam(id: "a", requireEmpty: false)
         #expect(try store.fixtures().isEmpty)
         #expect(try store.availability(fixtureId: "f").isEmpty)
+        #expect(try store.tournaments().map(\.teamIds) == [["b"]])
+        let backup = try store.backupJSON()
+        let root = try #require(JSONSerialization.jsonObject(with: Data(backup.utf8)) as? [String: Any])
+        #expect((root["teams"] as? [[String: Any]])?.count == 1)
+        #expect(try store.teams(includeArchived: true).map(\.id) == ["b"])
     }
 
     @Test("fixture and team deletion remove match ledger, while archive preserves it")

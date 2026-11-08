@@ -41,7 +41,8 @@ class RoomScheduleStoreTest {
         assertEquals(Availability.YES, schedule.availability("f").single().choice)
     }
     @Test fun guardedTeamDeletionIncludesFixturesAndCascadesPrivateRsvp() {
-        val game = Fixture("f", "Game", "a", "b", 1_000_000, 90, null)
+        schedule.saveTournament(Tournament("cup", "Cup", listOf("a", "b"), TournamentFormat.ROUND_ROBIN))
+        val game = Fixture("f", "Game", "a", "b", 1_000_000, 90, null, "cup")
         schedule.saveFixture(game)
         schedule.saveAvailability(AvailabilityResponse("f", "p", Availability.YES))
         assertEquals(1, teams.deletionPreview("a").fixtureCount)
@@ -49,6 +50,8 @@ class RoomScheduleStoreTest {
         teams.deleteTeam("a", requireEmpty = false)
         assertTrue(schedule.fixtures().isEmpty())
         assertTrue(schedule.availability("f").isEmpty())
+        assertEquals(listOf("b"), schedule.tournaments().single().teamIds)
+        assertEquals(1, RoomBackupStore(db).preview(RoomBackupStore(db).export()).teams)
     }
     @Test fun archivePreservesLedgersButFixtureAndTeamDeleteRemoveThem() {
         for (id in listOf("f1", "f2")) {
