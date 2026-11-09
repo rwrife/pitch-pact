@@ -6,6 +6,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class BackupFacadeTest {
+    @Test fun seasonPreviewUsesSharedSelector() {
+        val json = com.infinityball.pitchpact.domain.BackupCodec.encode(
+            com.infinityball.pitchpact.domain.BackupV1(
+                teams = listOf(com.infinityball.pitchpact.domain.Team("a", "A", 1), com.infinityball.pitchpact.domain.Team("b", "B", 1)),
+                fixtures = listOf(com.infinityball.pitchpact.domain.Fixture("f", "Match", "a", "b", 100, 90))))
+        val result = BackupFacade().seasonPreview(json, 100, 200)
+        kotlin.test.assertTrue(result.startsWith("OK:"))
+        kotlin.test.assertTrue(result.contains("\"fixtureIds\":[\"f\"]"))
+    }
+
     @Test fun csvQuotesInputAndNeverExportsPersonalDetails() {
         val b = BackupV1(
             teams = listOf(Team("h", "Home", 1), Team("a", "Away", 1)),

@@ -1,6 +1,13 @@
 package com.infinityball.pitchpact.ui
 
 import android.content.Intent
+import android.app.DatePickerDialog
+import android.text.format.DateFormat
+import java.util.Calendar
+import java.util.Date
+import com.infinityball.pitchpact.data.RoomScheduleStore
+import com.infinityball.pitchpact.domain.SeasonDeletion
+import com.infinityball.pitchpact.domain.SeasonDeletionPreview
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -25,11 +32,26 @@ import com.infinityball.pitchpact.CsvExport
 
 /** Private backup stays in user-selected document; sharing CSV never includes roster/contact details. */
 @Composable
-fun BackupControls(backup: RoomBackupStore, onRestored: () -> Unit) {
+fun BackupControls(backup: RoomBackupStore, schedule: RoomScheduleStore? = null, onRestored: () -> Unit) {
     val context = LocalContext.current
     var pending by remember { mutableStateOf<String?>(null) }
     var counts by remember { mutableStateOf<BackupCounts?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var seasonPreview by remember { mutableStateOf<SeasonDeletionPreview?>(null) }
+    var seasonRange by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    var seasonStart by remember {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.DAY_OF_YEAR, 1); cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+        mutableStateOf(cal.timeInMillis)
+    }
+    var seasonEnd by remember {
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.YEAR, 1); cal.set(Calendar.DAY_OF_YEAR, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+        mutableStateOf(cal.timeInMillis)
+    }
 
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) try {
@@ -59,6 +81,22 @@ fun BackupControls(backup: RoomBackupStore, onRestored: () -> Unit) {
             } catch (e: Exception) { error = e.message ?: "Export failed" }
         }) { Text("Schedule CSV") }
     }
+    if (schedule != null) {
+        Button(onClick = { val c = Calendar.getInstance().apply { timeInMillis = seasonStart }
+            DatePickerDialog(context, { _, y, m, d -> c.set(y, m, d); seasonStart = c.timeInMillis },
+                c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+        }) { Text("Season start: ${DateFormat.getDateFormat(context).format(Date(seasonStart))}") }
+        Button(onClick = { val c = Calendar.getInstance().apply { timeInMillis = seasonEnd }
+            DatePickerDialog(context, { _, y, m, d -> c.set(y, m, d); seasonEnd = c.timeInMillis },
+                c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+        }) { Text("Season end: ${DateFormat.getDateFormat(context).format(Date(seasonEnd))}") }
+        TextButton(onClick = {
+            try {
+                seasonPreview = SeasonDeletion.preview(seasonStart, seasonEnd, BackupCodec.decode(backup.export()))
+                seasonRange = seasonStart to seasonEnd
+            } catch (e: Exception) { error = e.message ?: "Season preview failed" }
+        }) { Text("Preview season delete") }
+    }
     Row {
         TextButton(onClick = {
             try {
@@ -77,6 +115,21 @@ fun BackupControls(backup: RoomBackupStore, onRestored: () -> Unit) {
             } catch (e: Exception) { error = e.message ?: "Export failed" }
         }) { Text("Availability CSV") }
     }
+    }
+    seasonPreview?.let { preview ->
+        AlertDialog(onDismissRequest = { seasonPreview = null; seasonRange = null },
+            title = { Text("Delete local season games?") },
+            text = { Text("Permanently remove ${preview.fixtureIds.size} local games, ${preview.matchCount} match ledgers (${preview.ledgerEvents} events, ${preview.consensusDecisions} decisions) and ${preview.availabilityCount} private responses. ${preview.coordinatedSkipped} coordinated games stay. Export backup first. Cancel changes nothing.") },
+            confirmButton = { Button(onClick = {
+                try {
+                    val range = requireNotNull(seasonRange)
+                    schedule!!.deleteSeason(range.first, range.second, preview.fixtureIds)
+                    preview.fixtureIds.forEach { LocalGameReminders.cancel(context, it) }
+                    onRestored()
+                } catch (e: Exception) { error = e.message ?: "Season delete failed" }
+                seasonPreview = null; seasonRange = null
+            }) { Text("Delete season records") } },
+            dismissButton = { TextButton(onClick = { seasonPreview = null; seasonRange = null }) { Text("Cancel") } })
     }
     counts?.let { preview ->
         AlertDialog(

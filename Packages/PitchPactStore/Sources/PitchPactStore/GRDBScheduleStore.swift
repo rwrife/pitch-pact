@@ -48,6 +48,28 @@ extension GRDBTeamStore {
             try db.execute(sql: "DELETE FROM tournament WHERE id = ?", arguments: [id])
         }
     }
+    /// IDs come from shared SeasonDeletion.preview. Recheck under the write lock so
+    /// new or coordinated rows cannot be erased by a stale confirmation.
+    public func deleteSeason(startEpochMillis: Int64, endEpochMillis: Int64, expectedFixtureIds: [String]) throws {
+        guard startEpochMillis >= 0, endEpochMillis > startEpochMillis else {
+            throw ValidationFailure("season.range.invalid", "Invalid season range")
+        }
+        try writer.write { db in
+            let games = try String.fetchAll(db, sql: "SELECT payload FROM fixture ORDER BY id")
+                .map { try JSONDecoder().decode(Fixture.self, from: Data($0.utf8)) }
+            let eligible = games.filter {
+                $0.startEpochMillis >= startEpochMillis && $0.startEpochMillis < endEpochMillis && $0.coordinatedLinkId == nil
+            }.map(\.id).sorted()
+            guard eligible == expectedFixtureIds.sorted(), eligible.count == expectedFixtureIds.count else {
+                throw ValidationFailure("season.changed", "Season changed — preview deletion again")
+            }
+            for id in eligible {
+                try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [id])
+                try db.execute(sql: "DELETE FROM match_day WHERE id = ?", arguments: [id])
+                try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [id])
+            }
+        }
+    }
     public func saveFixture(_ fixture: Fixture) throws { try upsert(fixture, id: fixture.id, table: "fixture") }
     public func fixtures() throws -> [Fixture] { try records(Fixture.self, table: "fixture").sorted { $0.startEpochMillis < $1.startEpochMillis } }
     public func deleteFixture(id: String) throws {

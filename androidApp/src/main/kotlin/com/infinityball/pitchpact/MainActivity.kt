@@ -74,7 +74,7 @@ private fun Navigation(store: RoomTeamStore, schedule: RoomScheduleStore, backup
                 TextButton(onClick = { showRegistry = true }) { Text("Find & link teams") }
                 TextButton(onClick = { showSpectator = true }) { Text("Watch live game") }
             }
-            BackupControls(backup, onRestored = { restored++ })
+            BackupControls(backup, schedule, onRestored = { restored++ })
             Box(Modifier.weight(1f)) {
                 androidx.compose.runtime.key(restored) {
                     TeamDirectoryScreen(

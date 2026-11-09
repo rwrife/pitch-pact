@@ -45,6 +45,19 @@ struct TeamsView: View {
     @State private var incomingCounts: String?
     @State private var dataError: String?
     @State private var csv: String?
+    @State private var seasonStart = Calendar.current.date(from: DateComponents(year: Calendar.current.component(.year, from: Date()), month: 1, day: 1)) ?? Date()
+    @State private var seasonEnd = Calendar.current.date(from: DateComponents(year: Calendar.current.component(.year, from: Date()) + 1, month: 1, day: 1)) ?? Date()
+    @State private var seasonPreview: SeasonPreview?
+    @State private var seasonPreviewRange: (Int64, Int64)?
+
+    private struct SeasonPreview: Decodable {
+        let fixtureIds: [String]
+        let coordinatedSkipped: Int
+        let availabilityCount: Int
+        let matchCount: Int
+        let ledgerEvents: Int
+        let consensusDecisions: Int
+    }
 
     var body: some View {
         List {
@@ -72,6 +85,20 @@ struct TeamsView: View {
                     }
                 }
                 if let csv { ShareLink("Share CSV", item: csv) }
+                DatePicker("Season start", selection: $seasonStart, displayedComponents: .date)
+                DatePicker("Season end", selection: $seasonEnd, displayedComponents: .date)
+                Button("Preview season delete", role: .destructive) {
+                    do {
+                        let raw = try AppTeamStore.shared.backupJSON()
+                        let startMillis = Int64(seasonStart.timeIntervalSince1970 * 1000)
+                        let endMillis = Int64(seasonEnd.timeIntervalSince1970 * 1000)
+                        let res = BackupFacade().seasonPreview(json: raw, startEpochMillis: startMillis, endEpochMillis: endMillis)
+                        guard res.hasPrefix("OK:") else { throw ValidationFailure("season.preview", res) }
+                        let json = String(res.dropFirst(3))
+                        seasonPreview = try JSONDecoder().decode(SeasonPreview.self, from: Data(json.utf8))
+                        seasonPreviewRange = (startMillis, endMillis)
+                    } catch { dataError = error.localizedDescription }
+                }
             }
             NavigationLink("Games & tournaments") { ScheduleView() }
             NavigationLink("Find & link teams") { RegistryView() }.accessibilityIdentifier("app.teams.registry")
@@ -182,6 +209,28 @@ struct TeamsView: View {
             Text(preview.blockingCount == 0
                  ? "This team has no players, uniforms, guardian contacts, or fixtures. Deleting removes it permanently."
                  : "This deletes the team AND \(preview.playerCount) players, \(preview.uniformRequirementCount) uniform requirements, \(preview.guardianContactCount) guardian contacts, \(preview.fixtureCount) fixtures and their match ledgers. This cannot be undone.")
+        }
+        .confirmationDialog("Delete local season games?", isPresented: Binding(
+            get: { seasonPreview != nil },
+            set: { if !$0 { seasonPreview = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete season records", role: .destructive) {
+                guard let preview = seasonPreview, let range = seasonPreviewRange else { return }
+                do {
+                    try AppTeamStore.shared.deleteSeason(
+                        startEpochMillis: range.0,
+                        endEpochMillis: range.1,
+                        expectedFixtureIds: preview.fixtureIds)
+                    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: preview.fixtureIds)
+                    reload()
+                } catch { dataError = error.localizedDescription }
+                seasonPreview = nil
+            }
+            Button("Cancel", role: .cancel) { seasonPreview = nil }
+        } message: {
+            if let preview = seasonPreview {
+                Text("Permanently remove \(preview.fixtureIds.count) local games, \(preview.matchCount) match ledgers (\(preview.ledgerEvents) events, \(preview.consensusDecisions) decisions) and \(preview.availabilityCount) private responses. \(preview.coordinatedSkipped) coordinated games stay. Export backup first. Cancel changes nothing.")
+            }
         }
         .fileExporter(isPresented: $exportingBackup, document: backupDocument, contentType: .json, defaultFilename: "pitch-pact-backup.json") { _ in
             backupDocument = nil

@@ -68,6 +68,22 @@ class RoomScheduleStoreTest {
         assertNull(db.matchDayDao().load("f2"))
         assertTrue(schedule.fixtures().isEmpty())
     }
+    @Test fun seasonDeletionKeepsSharedAndOtherSeasonsAndRejectsStalePreview() {
+        schedule.saveFixture(Fixture("local", "Local", "a", "b", 100, 90))
+        schedule.saveFixture(Fixture("before", "Prior", "a", "b", 99, 90))
+        schedule.saveFixture(Fixture("after", "Next", "a", "b", 200, 90))
+        schedule.saveFixture(Fixture("shared", "Shared", "a", "b", 150, 90, coordinatedLinkId = "link"))
+        for (id in listOf("local", "shared")) RoomMatchDayStore(db).save(MatchDayState(id))
+        schedule.saveAvailability(AvailabilityResponse("local", "p", Availability.YES))
+        assertEquals(4, schedule.fixtures().size) // cancelled preview never writes
+        assertFailsWith<IllegalArgumentException> { schedule.deleteSeason(100, 200, listOf("shared")) }
+        assertEquals(4, schedule.fixtures().size)
+        schedule.deleteSeason(100, 200, listOf("local"))
+        assertEquals(listOf("after", "before", "shared"), schedule.fixtures().map { it.id }.sorted())
+        assertTrue(schedule.availability("local").isEmpty())
+        assertNull(db.matchDayDao().load("local"))
+        assertNotNull(db.matchDayDao().load("shared"))
+    }
     @Test fun acceptedConsensusResultPersistsAndSurvivesUnchangedScheduleRefresh() {
         val shared = com.infinityball.pitchpact.dto.CoordinatedFixture(
             "m1", "LNK", "a", "b", 5_000_000, "Field 2", "Red", "Blue", "coordinated", setOf("a", "b"), 1)

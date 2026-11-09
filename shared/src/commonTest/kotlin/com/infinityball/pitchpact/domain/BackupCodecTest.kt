@@ -26,6 +26,28 @@ class BackupCodecTest {
         assertEquals("1-0", BackupCodec.decode(text).matches.single().officialScore().render())
     }
 
+    @Test fun seasonDeletionSelectsLocalGamesOnlyAndCountsPrivateLoss() {
+        val fixtures = listOf(
+            Fixture("inside", "Local", "a", "b", 100, 90),
+            Fixture("before", "Prior", "a", "b", 99, 90),
+            Fixture("after", "Next", "a", "b", 200, 90),
+            Fixture("shared", "Coordinated", "a", "b", 150, 90, coordinatedLinkId = "link"),
+        )
+        val match = MatchDayState("inside", events = listOf(
+            LedgerEvent.Event("goal", Side.HOME, 1, EventPayload.Goal(Side.HOME, 9, null, GoalType.OPEN_PLAY)),
+        ))
+        val backup = BackupV1(fixtures = fixtures, matches = listOf(match, MatchDayState("shared")),
+            availability = listOf(AvailabilityResponse("inside", "p", Availability.YES),
+                AvailabilityResponse("shared", "p", Availability.NO)))
+        val preview = SeasonDeletion.preview(100, 200, backup)
+        assertEquals(listOf("inside"), preview.fixtureIds)
+        assertEquals(1, preview.coordinatedSkipped)
+        assertEquals(1, preview.availabilityCount)
+        assertEquals(1, preview.ledgerEvents)
+        assertEquals(1, preview.matchCount)
+        assertFailsWith<IllegalArgumentException> { SeasonDeletion.preview(200, 100, backup) }
+    }
+
     @Test fun rejectsUntrustedAndIncompleteBackupBeforeAnyPlatformWrite() {
         assertFailsWith<IllegalArgumentException> { BackupCodec.encode(BackupV1(version = 2)) }
         assertFailsWith<IllegalArgumentException> { BackupCodec.encode(BackupV1(teams = listOf(Team("a", "A", 1), Team("a", "B", 2)))) }

@@ -10,6 +10,9 @@ class BackupFacade {
         .fold({ "OK:$it" }, { "ERROR:${it.message}" })
     fun preview(json: String): String = runCatching { BackupCodec.preview(json) }
         .fold({ "OK:${codec.encodeToString(BackupCounts.serializer(), it)}" }, { "ERROR:${it.message}" })
+    fun seasonPreview(json: String, startEpochMillis: Long, endEpochMillis: Long): String = runCatching {
+        SeasonDeletion.preview(startEpochMillis, endEpochMillis, BackupCodec.decode(json))
+    }.fold({ "OK:${codec.encodeToString(SeasonDeletionPreview.serializer(), it)}" }, { "ERROR:${it.message}" })
     fun export(json: String, kind: String): String = runCatching {
         CsvExport.render(kind, BackupCodec.decode(json))
     }.getOrDefault("ERROR:csv export failed")

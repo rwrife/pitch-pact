@@ -25,6 +25,24 @@ data class BackupCounts(
     val matches: Int, val ledgerEvents: Int, val consensusDecisions: Int,
 )
 
+@Serializable data class SeasonDeletionPreview(
+    val fixtureIds: List<String>, val coordinatedSkipped: Int, val availabilityCount: Int,
+    val matchCount: Int, val ledgerEvents: Int, val consensusDecisions: Int,
+)
+
+/** A season is an explicit [start, end) UTC instant range; never delete shared fixtures locally. */
+object SeasonDeletion {
+    fun preview(startEpochMillis: Long, endEpochMillis: Long, b: BackupV1): SeasonDeletionPreview {
+        require(startEpochMillis >= 0 && endEpochMillis > startEpochMillis) { "Invalid season range" }
+        val inRange = b.fixtures.filter { it.startEpochMillis in startEpochMillis until endEpochMillis }
+        val ids = inRange.filter { it.coordinatedLinkId == null }.map(Fixture::id).toSet()
+        val matches = b.matches.filter { it.matchId in ids }
+        return SeasonDeletionPreview(ids.sorted(), inRange.size - ids.size,
+            b.availability.count { it.fixtureId in ids }, matches.size,
+            matches.sumOf { it.events.size }, matches.sumOf { it.decisions.size })
+    }
+}
+
 /** Decode and validate before presenting replacement preview; caller owns atomic platform transaction. */
 object BackupCodec {
     private val json = Json { ignoreUnknownKeys = false }
