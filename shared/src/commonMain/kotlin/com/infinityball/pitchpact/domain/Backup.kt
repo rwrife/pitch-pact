@@ -89,9 +89,13 @@ object BackupCodec {
                 (f.tournamentId == null || f.tournamentId in tournaments)
         }) { "Backup fixture has missing relation" }
         b.fixtures.forEach(Scheduling::validate)
-        require(b.availability.all { it.fixtureId in fixtures && it.playerId in players }) {
-            "Backup availability has missing relation"
-        }
+        val fixtureById = b.fixtures.associateBy(Fixture::id)
+        val playerById = b.players.associateBy(Player::id)
+        require(b.availability.all { response ->
+            val fixture = fixtureById[response.fixtureId]
+            val teamId = playerById[response.playerId]?.teamId
+            fixture != null && teamId != null && (teamId == fixture.homeTeamId || teamId == fixture.awayTeamId)
+        }) { "Backup availability player must belong to a fixture team" }
         require(b.availability.map { it.fixtureId to it.playerId }.distinct().size == b.availability.size) {
             "Duplicate backup availability"
         }

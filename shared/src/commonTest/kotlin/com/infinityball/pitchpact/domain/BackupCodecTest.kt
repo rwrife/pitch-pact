@@ -54,5 +54,11 @@ class BackupCodecTest {
         assertFailsWith<IllegalArgumentException> { BackupCodec.encode(BackupV1(guardianContacts = listOf(GuardianContact("g", "missing", "X")))) }
         assertFailsWith<Exception> { BackupCodec.decode("{\"version\":2}") }
         assertFailsWith<Exception> { BackupCodec.decode("{\"version\":1,\"unknown\":true}") }
+        val teams = listOf(Team("a", "A", 1), Team("b", "B", 1), Team("c", "C", 1))
+        val fixture = Fixture("f", "Match", "a", "b", 100, 90)
+        val player = Player("p", "c", "Unrelated", 7, 1)
+        val misplaced = BackupV1(teams = teams, players = listOf(player), fixtures = listOf(fixture),
+            availability = listOf(AvailabilityResponse("f", "p", Availability.YES)))
+        assertFailsWith<IllegalArgumentException> { BackupCodec.encode(misplaced) }
     }
 }
