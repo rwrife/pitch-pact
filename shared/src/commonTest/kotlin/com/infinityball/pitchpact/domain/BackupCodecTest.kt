@@ -60,5 +60,9 @@ class BackupCodecTest {
         val misplaced = BackupV1(teams = teams, players = listOf(player), fixtures = listOf(fixture),
             availability = listOf(AvailabilityResponse("f", "p", Availability.YES)))
         assertFailsWith<IllegalArgumentException> { BackupCodec.encode(misplaced) }
+
+        val corruptOutboxMatch = MatchDayState("f", queuedIds = listOf("ghost-event-id"))
+        val corruptBackup = BackupV1(teams = teams, fixtures = listOf(fixture), matches = listOf(corruptOutboxMatch))
+        assertFailsWith<IllegalArgumentException> { BackupCodec.encode(corruptBackup) }
     }
 }

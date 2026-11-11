@@ -100,6 +100,8 @@ object BackupCodec {
             "Duplicate backup availability"
         }
         require(b.matches.all { state -> state.matchId in fixtures &&
-            runCatching { state.officialScore() }.isSuccess }) { "Invalid backup match ledger or consensus" }
+            runCatching { MatchDayCodec.decode(MatchDayCodec.encode(state)) }.isSuccess }) {
+            "Invalid backup match ledger, outbox, or consensus"
+        }
     }
 }
