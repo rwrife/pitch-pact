@@ -16,6 +16,17 @@ class BackupFacadeTest {
         kotlin.test.assertTrue(result.contains("\"fixtureIds\":[\"f\"]"))
     }
 
+    @Test fun csvTreatsUntrustedNamesAsText() {
+        val b = BackupV1(
+            teams = listOf(Team("h", "=HYPERLINK(\"https://example.test\")", 1), Team("a", "Away", 1)),
+            fixtures = listOf(Fixture("f", "\t+SUM(1,2)", "h", "a", 1, 30)),
+        )
+        val csv = CsvExport.render("schedule", b)
+        assertTrue(csv.contains("\"'\t+SUM(1,2)\""))
+        assertTrue(csv.contains("\"'=HYPERLINK(\"\"https://example.test\"\")\""))
+        assertFalse(csv.contains(",=HYPERLINK("))
+    }
+
     @Test fun csvQuotesInputAndNeverExportsPersonalDetails() {
         val b = BackupV1(
             teams = listOf(Team("h", "Home", 1), Team("a", "Away", 1)),

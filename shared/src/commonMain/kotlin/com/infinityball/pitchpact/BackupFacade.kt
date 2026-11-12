@@ -44,7 +44,11 @@ object CsvExport {
             else -> throw IllegalArgumentException("Unknown CSV export")
         }
         return rows.joinToString("\r\n") { row -> row.joinToString(",") { field ->
-            if (field.any { it in "\"\r\n," }) "\"${field.replace("\"", "\"\"")}\"" else field
+            // ponytail: Treat exported labels as spreadsheet text; use typed XLSX if formulas ever become a feature.
+            val unsafe = field.firstOrNull() in listOf('\t', '\r', '\n') ||
+                field.trimStart().firstOrNull() in listOf('=', '+', '-', '@')
+            val text = if (unsafe) "'$field" else field
+            if (unsafe || text.any { it in "\"\r\n," }) "\"${text.replace("\"", "\"\"")}\"" else text
         } } + "\r\n"
     }
 }
