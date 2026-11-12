@@ -47,7 +47,7 @@ final class ConsensusJourney: XCTestCase {
             if element.exists { return }
             usleep(200_000)
         }
-        XCTAssertTrue(element.exists, file: file, line: line)
+        XCTAssertTrue(element.exists, "Missing \(element.identifier); screen: \(XCUIApplication().debugDescription)", file: file, line: line)
     }
 
     @MainActor func testTwoSidelineSubmitAcceptLoop() {

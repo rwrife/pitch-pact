@@ -41,7 +41,8 @@ class RoomScheduleStoreTest {
         assertEquals(Availability.YES, schedule.availability("f").single().choice)
     }
     @Test fun guardedTeamDeletionIncludesFixturesAndCascadesPrivateRsvp() {
-        val game = Fixture("f", "Game", "a", "b", 1_000_000, 90, null)
+        schedule.saveTournament(Tournament("cup", "Cup", listOf("a", "b"), TournamentFormat.ROUND_ROBIN))
+        val game = Fixture("f", "Game", "a", "b", 1_000_000, 90, null, "cup")
         schedule.saveFixture(game)
         schedule.saveAvailability(AvailabilityResponse("f", "p", Availability.YES))
         assertEquals(1, teams.deletionPreview("a").fixtureCount)
@@ -49,6 +50,39 @@ class RoomScheduleStoreTest {
         teams.deleteTeam("a", requireEmpty = false)
         assertTrue(schedule.fixtures().isEmpty())
         assertTrue(schedule.availability("f").isEmpty())
+        assertEquals(listOf("b"), schedule.tournaments().single().teamIds)
+        assertEquals(1, RoomBackupStore(db).preview(RoomBackupStore(db).export()).teams)
+    }
+    @Test fun archivePreservesLedgersButFixtureAndTeamDeleteRemoveThem() {
+        for (id in listOf("f1", "f2")) {
+            schedule.saveFixture(Fixture(id, id, "a", "b", 1_000_000, 90))
+            RoomMatchDayStore(db).save(MatchDayState(id))
+        }
+        teams.archiveTeam("a", true, 10)
+        assertNotNull(db.matchDayDao().load("f1"))
+        schedule.deleteFixture("f1")
+        assertNull(db.matchDayDao().load("f1"))
+        assertNotNull(db.matchDayDao().load("f2"))
+        assertEquals(1, teams.deletionPreview("a").fixtureCount)
+        teams.deleteTeam("a", requireEmpty = false)
+        assertNull(db.matchDayDao().load("f2"))
+        assertTrue(schedule.fixtures().isEmpty())
+    }
+    @Test fun seasonDeletionKeepsSharedAndOtherSeasonsAndRejectsStalePreview() {
+        schedule.saveFixture(Fixture("local", "Local", "a", "b", 100, 90))
+        schedule.saveFixture(Fixture("before", "Prior", "a", "b", 99, 90))
+        schedule.saveFixture(Fixture("after", "Next", "a", "b", 200, 90))
+        schedule.saveFixture(Fixture("shared", "Shared", "a", "b", 150, 90, coordinatedLinkId = "link"))
+        for (id in listOf("local", "shared")) RoomMatchDayStore(db).save(MatchDayState(id))
+        schedule.saveAvailability(AvailabilityResponse("local", "p", Availability.YES))
+        assertEquals(4, schedule.fixtures().size) // cancelled preview never writes
+        assertFailsWith<IllegalArgumentException> { schedule.deleteSeason(100, 200, listOf("shared")) }
+        assertEquals(4, schedule.fixtures().size)
+        schedule.deleteSeason(100, 200, listOf("local"))
+        assertEquals(listOf("after", "before", "shared"), schedule.fixtures().map { it.id }.sorted())
+        assertTrue(schedule.availability("local").isEmpty())
+        assertNull(db.matchDayDao().load("local"))
+        assertNotNull(db.matchDayDao().load("shared"))
     }
     @Test fun acceptedConsensusResultPersistsAndSurvivesUnchangedScheduleRefresh() {
         val shared = com.infinityball.pitchpact.dto.CoordinatedFixture(

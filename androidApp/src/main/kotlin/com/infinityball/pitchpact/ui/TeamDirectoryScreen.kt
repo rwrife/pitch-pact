@@ -152,11 +152,11 @@ fun TeamDirectoryScreen(store: RoomTeamStore, schedule: RoomScheduleStore, onOpe
             text = {
                 Text(
                     if (preview.blockingCount == 0) {
-                        "This team has no players, uniforms, or guardian contacts. Deleting removes it permanently."
+                        "This team has no players, uniforms, guardian contacts, or fixtures. Deleting removes it permanently."
                     } else {
                         "This deletes the team AND ${preview.playerCount} players, " +
                             "${preview.uniformRequirementCount} uniform requirements, " +
-                            "${preview.guardianContactCount} guardian contacts. This cannot be undone."
+                            "${preview.guardianContactCount} guardian contacts, ${preview.fixtureCount} fixtures and their match ledgers. This cannot be undone."
                     },
                 )
             },

@@ -36,6 +36,19 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
             dao.deleteTournament(id)
         }
     }
+    /** Commit only the local IDs approved by the shared preview; check again inside one transaction. */
+    fun deleteSeason(startEpochMillis: Long, endEpochMillis: Long, expectedFixtureIds: List<String>) = runBlocking {
+        require(startEpochMillis >= 0 && endEpochMillis > startEpochMillis) { "Invalid season range" }
+        db.withTransaction {
+            val eligible = fixtures().filter {
+                it.startEpochMillis >= startEpochMillis && it.startEpochMillis < endEpochMillis && it.coordinatedLinkId == null
+            }.map { it.id }.sorted()
+            require(eligible == expectedFixtureIds.sorted() && eligible.size == expectedFixtureIds.size) {
+                "Season changed — preview deletion again"
+            }
+            for (id in eligible) { dao.deleteAvailability(id); db.matchDayDao().delete(id); dao.deleteFixture(id) }
+        }
+    }
     override fun saveFixture(fixture: Fixture): List<ScheduleConflict> = runBlocking {
         db.withTransaction {
             Scheduling.validateEdit(fixtures().firstOrNull { it.id == fixture.id }, fixture)
@@ -50,7 +63,7 @@ class RoomScheduleStore(private val db: PitchPactDatabase) : ScheduleStore {
         require(fixtures().firstOrNull { it.id == id }?.coordinatedLinkId == null) {
             "Coordinated fixture — revoke or un-confirm it with the other team instead of deleting locally"
         }
-        db.withTransaction { dao.deleteAvailability(id); dao.deleteFixture(id) }
+        db.withTransaction { dao.deleteAvailability(id); db.matchDayDao().delete(id); dao.deleteFixture(id) }
     }
     override fun saveAvailability(response: AvailabilityResponse) {
         require(db.teamDao().player(response.playerId) != null) { "Player not on roster" }

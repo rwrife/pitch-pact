@@ -279,9 +279,19 @@ extension GRDBTeamStore {
             )
         }
         let dependentFixtures = try fixtures().filter { $0.homeTeamId == id || $0.awayTeamId == id }.map(\.id)
+        let affectedTournaments = try tournaments().filter { $0.teamIds.contains(id) }.map { tournament -> Tournament in
+            var updated = tournament
+            updated.teamIds.removeAll { $0 == id }
+            return updated
+        }
+        let tournamentPayloads = try affectedTournaments.map { ($0.id, String(decoding: try JSONEncoder().encode($0), as: UTF8.self)) }
         try writer.write { db in
+            for (tournamentId, payload) in tournamentPayloads {
+                try db.execute(sql: "UPDATE tournament SET payload = ? WHERE id = ?", arguments: [payload, tournamentId])
+            }
             for fixtureId in dependentFixtures {
                 try db.execute(sql: "DELETE FROM availability WHERE fixture_id = ?", arguments: [fixtureId])
+                try db.execute(sql: "DELETE FROM match_day WHERE id = ?", arguments: [fixtureId])
                 try db.execute(sql: "DELETE FROM fixture WHERE id = ?", arguments: [fixtureId])
             }
             _ = try TeamRow.deleteOne(db, key: id)
